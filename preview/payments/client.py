@@ -156,6 +156,7 @@ class PaymentsClient:
         cursor: str | None = None,
         page_size: int = 25,
         *,
+
         timeout: float | None = None,
     ) -> ChargePage:
         path = '/charges'
@@ -188,7 +189,8 @@ class PaymentsClient:
         )
 
         if response.status_code == 200:
-            return ChargePage.model_validate(response.json())
+            parsed_body = ChargePage.model_validate(response.json())
+            return parsed_body
 
         raise ApiError(response.status_code, response.text, response=response)
 
@@ -196,6 +198,7 @@ class PaymentsClient:
         self,
         body: CreateChargeRequest,
         *,
+
         timeout: float | None = None,
     ) -> Charge:
         path = '/charges'
@@ -224,10 +227,12 @@ class PaymentsClient:
         )
 
         if response.status_code == 201:
-            return Charge.model_validate(response.json())
+            parsed_body = Charge.model_validate(response.json())
+            return parsed_body
         if response.status_code == 402:
+            parsed_body = ChargeError.model_validate(response.json())
             raise ApiError(
-                response.status_code, response.text, ChargeError.model_validate(response.json()), response
+                response.status_code, response.text, parsed_body, response
             )
 
         raise ApiError(response.status_code, response.text, response=response)
@@ -236,6 +241,7 @@ class PaymentsClient:
         self,
         charge_id: str,
         *,
+
         timeout: float | None = None,
     ) -> list[ChargeEvent]:
         path = '/charges/{chargeId}/events'
@@ -259,7 +265,8 @@ class PaymentsClient:
         )
 
         if response.status_code == 200:
-            return TypeAdapter(list[ChargeEvent]).validate_python(response.json())
+            parsed_body = TypeAdapter(list[ChargeEvent]).validate_python(response.json())
+            return parsed_body
 
         raise ApiError(response.status_code, response.text, response=response)
 
@@ -267,6 +274,7 @@ class PaymentsClient:
         self,
         customer_id: UUID,
         *,
+
         timeout: float | None = None,
     ) -> Customer:
         path = '/customers/{customerId}'
@@ -283,10 +291,12 @@ class PaymentsClient:
         )
 
         if response.status_code == 200:
-            return Customer.model_validate(response.json())
+            parsed_body = Customer.model_validate(response.json())
+            return parsed_body
         if response.status_code == 404:
+            parsed_body = ApiErrorModel.model_validate(response.json())
             raise ApiError(
-                response.status_code, response.text, ApiErrorModel.model_validate(response.json()), response
+                response.status_code, response.text, parsed_body, response
             )
 
         raise ApiError(response.status_code, response.text, response=response)
@@ -296,6 +306,7 @@ class PaymentsClient:
         customer_id: UUID,
         body: bytes,
         *,
+
         timeout: float | None = None,
     ) -> None:
         path = '/customers/{customerId}/avatar'
@@ -323,7 +334,8 @@ class PaymentsClient:
         )
 
         if response.status_code == 200:
-            return None
+            parsed_body = None
+            return parsed_body
 
         raise ApiError(response.status_code, response.text, response=response)
 
@@ -331,6 +343,7 @@ class PaymentsClient:
         self,
         body: PaymentMethod,
         *,
+
         timeout: float | None = None,
     ) -> PaymentMethod:
         path = '/payment-methods'
@@ -359,6 +372,7 @@ class PaymentsClient:
         )
 
         if response.status_code == 201:
-            return TypeAdapter(PaymentMethod).validate_python(response.json())
+            parsed_body = TypeAdapter(PaymentMethod).validate_python(response.json())
+            return parsed_body
 
         raise ApiError(response.status_code, response.text, response=response)

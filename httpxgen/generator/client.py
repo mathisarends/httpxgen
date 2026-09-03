@@ -9,6 +9,7 @@ from httpxgen.generator.operations import (
     Operation,
     Parameter,
     Response,
+    ResponseContent,
     query_model_name,
     query_parameters,
 )
@@ -96,6 +97,8 @@ def _render_client_imports(
     if datetime_names:
         lines.append(f"from datetime import {', '.join(datetime_names)}")
     typing_names = used_names(annotations, ("Literal",))
+    if any(len(_operation_bodies(operation)) > 1 for operation in operations):
+        typing_names.append("Literal")
     if operations:
         typing_names.insert(0, "Any")
     typing_names.append("Self")
@@ -145,6 +148,13 @@ def _render_operation(operation: Operation) -> str:
         signature += "\n"
     successes = [item.annotation for item in operation.responses if item.success]
     return_annotation = " | ".join(dict.fromkeys(successes))
+    bodies = _operation_bodies(operation)
+    keyword_signature = ""
+    if len(bodies) > 1:
+        choices = ", ".join(repr(item.media_type) for item in bodies)
+        keyword_signature = (
+            f"        content_type: Literal[{choices}] = {bodies[0].media_type!r},\n"
+        )
 
     assignments = _render_parameter_assignments(operation)
     assignments += _render_security(operation)
@@ -162,10 +172,7 @@ def _render_operation(operation: Operation) -> str:
         any(item.location == "header" for item in operation.parameters)
         or bool(operation.security)
         or any(item.media_type for item in operation.responses)
-        or (
-            _operation_body(operation) is not None
-            and _operation_body(operation).kind in {"binary", "text"}
-        )
+        or any(_body_needs_headers(item) for item in _operation_bodies(operation))
     )
     if needs_headers:
         request_args.append("headers=headers")
@@ -184,6 +191,7 @@ def _render_operation(operation: Operation) -> str:
         operation=operation,
         signature=signature,
         return_annotation=return_annotation,
+        keyword_signature=keyword_signature,
         assignments=assignments,
         request_arguments=request,
         response_handling=_render_response_handling(operation.responses),
@@ -201,10 +209,7 @@ def _render_parameter_assignments(operation: Operation) -> str:
     has_query = any(item.location == "query" for item in operation.parameters)
     has_headers = (
         any(item.location == "header" for item in operation.parameters)
-        or (
-            _operation_body(operation) is not None
-            and _operation_body(operation).kind in {"binary", "text"}
-        )
+        or any(_body_needs_headers(item) for item in _operation_bodies(operation))
         or any(item.media_type for item in operation.responses)
     )
     has_cookies = any(item.location == "cookie" for item in operation.parameters)
@@ -214,13 +219,7 @@ def _render_parameter_assignments(operation: Operation) -> str:
         lines.append("        headers = dict(self._headers)\n")
     if has_cookies or operation.security:
         lines.append("        cookies: dict[str, str] = {}\n")
-    accepted = list(
-        dict.fromkeys(
-            item.media_type
-            for item in operation.responses
-            if item.media_type is not None
-        )
-    )
+    accepted = list(dict.fromkeys(_response_media_types(operation.responses)))
     if accepted:
         lines.append(f"        headers.setdefault('Accept', {', '.join(accepted)!r})\n")
     query_items = query_parameters(operation)
@@ -279,14 +278,26 @@ def _security_uses(operation: Operation, location: str) -> bool:
 
 
 def _render_body_assignment(operation: Operation) -> str:
-    body = _operation_body(operation)
-    if body is None:
+    bodies = _operation_bodies(operation)
+    if not bodies:
         return ""
     lines = ["        body_arguments: dict[str, Any] = {}\n"]
-    conditional = not body.required
+    conditional = not bodies[0].required
     if conditional:
         lines.append("        if body is not None:\n")
     indent = "            " if conditional else "        "
+    if len(bodies) == 1:
+        lines.extend(_render_body_variant(bodies[0], indent))
+    else:
+        for index, body in enumerate(bodies):
+            keyword = "if" if index == 0 else "elif"
+            lines.append(f"{indent}{keyword} content_type == {body.media_type!r}:\n")
+            lines.extend(_render_body_variant(body, indent + "    "))
+    return "".join(lines) + "\n"
+
+
+def _render_body_variant(body: Body, indent: str) -> list[str]:
+    lines: list[str] = []
     if body.kind == "json":
         lines.append(
             f"{indent}body_arguments['json'] = TypeAdapter({body.annotation}).dump_python(\n"
@@ -313,7 +324,21 @@ def _render_body_assignment(operation: Operation) -> str:
         lines.append(
             f"{indent}headers.setdefault('Content-Type', {body.media_type!r})\n"
         )
-    return "".join(lines) + "\n"
+    if (
+        body.kind == "json"
+        and body.media_type.split(";", 1)[0].lower() != "application/json"
+    ):
+        lines.append(
+            f"{indent}headers.setdefault('Content-Type', {body.media_type!r})\n"
+        )
+    return lines
+
+
+def _operation_bodies(operation: Operation) -> tuple[Body, ...]:
+    if operation.bodies:
+        return operation.bodies
+    body = _operation_body(operation)
+    return (body,) if body is not None else ()
 
 
 def _operation_body(operation: Operation) -> Body | None:
@@ -329,18 +354,62 @@ def _operation_body(operation: Operation) -> Body | None:
     )
 
 
+def _body_needs_headers(body: Body) -> bool:
+    normalized = body.media_type.split(";", 1)[0].lower()
+    return body.kind in {"binary", "text"} or (
+        body.kind == "json" and normalized != "application/json"
+    )
+
+
+def _response_media_types(responses: Sequence[Response]) -> list[str]:
+    return [
+        content.media_type for response in responses for content in response.contents
+    ] or [
+        response.media_type for response in responses if response.media_type is not None
+    ]
+
+
 def _render_response_handling(responses: Sequence[Response]) -> str:
     lines: list[str] = []
     for response in responses:
         condition = _response_condition(response.status)
         lines.append(f"        {condition}:\n")
-        expression = _response_expression(response)
+        contents = _response_contents(response)
+        if not contents:
+            lines.append("            parsed_body = None\n")
+        elif len(contents) == 1:
+            lines.append(
+                f"            parsed_body = {_response_expression(contents[0])}\n"
+            )
+        else:
+            lines.append(
+                "            response_content_type = (\n"
+                "                response.headers.get('Content-Type', '').split(';', 1)[0].lower()\n"
+                "            )\n"
+            )
+            for index, content in enumerate(contents):
+                keyword = "if" if index == 0 else "elif"
+                normalized = content.media_type.split(";", 1)[0].lower()
+                lines.append(
+                    f"            {keyword} response_content_type == {normalized!r}:\n"
+                )
+                lines.append(
+                    f"                parsed_body = {_response_expression(content)}\n"
+                )
+            lines.append("            else:\n")
+            lines.append(
+                "                raise ApiError(\n"
+                "                    response.status_code,\n"
+                "                    f'unsupported response Content-Type: {response_content_type}',\n"
+                "                    response=response,\n"
+                "                )\n"
+            )
         if response.success:
-            lines.append(f"            return {expression}\n")
+            lines.append("            return parsed_body\n")
         else:
             lines.append(
                 "            raise ApiError(\n"
-                f"                response.status_code, response.text, {expression}, response\n"
+                "                response.status_code, response.text, parsed_body, response\n"
                 "            )\n"
             )
     return "".join(lines)
@@ -356,8 +425,30 @@ def _response_condition(status: int | str) -> str:
     return f"if {lower} <= response.status_code < {upper}"
 
 
-def _response_expression(response: Response) -> str:
-    if response.kind == "empty" or response.annotation == "None":
+def _response_contents(response: Response) -> tuple[ResponseContent, ...]:
+    if response.contents:
+        return response.contents
+    if response.kind == "empty":
+        return ()
+    media_type = response.media_type or (
+        "text/plain"
+        if response.kind == "text"
+        else "application/octet-stream"
+        if response.kind == "binary"
+        else "application/json"
+    )
+    return (
+        ResponseContent(
+            response.annotation,
+            response.model_annotation,
+            response.kind,
+            media_type,
+        ),
+    )
+
+
+def _response_expression(response: ResponseContent) -> str:
+    if response.annotation == "None":
         return "None"
     if response.kind == "binary":
         return "response.content"

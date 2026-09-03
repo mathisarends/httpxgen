@@ -122,6 +122,7 @@ _OPERATION = """\
     async def {{ operation.name }}(
         self,
 {{ signature }}        *,
+{{ keyword_signature }}
         timeout: float | None = None,
     ) -> {{ return_annotation }}:
 {{ assignments }}

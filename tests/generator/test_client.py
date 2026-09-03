@@ -47,9 +47,10 @@ def test_render_client_renders_parameters_and_response_branches():
     assert "query.extend(_serialize_query('status'" in source
     assert "headers['trace-id'] = _serialize_simple(trace_id" in source
     assert "if response.status_code == 200:" in source
-    assert "return Charge.model_validate(response.json())" in source
+    assert "parsed_body = Charge.model_validate(response.json())" in source
+    assert "return parsed_body" in source
     assert "if response.status_code == 204:" in source
-    assert "return None" in source
+    assert "parsed_body = None" in source
 
 
 def test_render_client_does_not_create_params_for_an_operation_without_queries():

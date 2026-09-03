@@ -80,6 +80,21 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
     for name in list(schemas):
         schemas[name] = process(schemas[name], name, lift_root=False)
 
+    for component_name, request_body in components.get("requestBodies", {}).items():
+        if "$ref" not in request_body:
+            for media in request_body.get("content", {}).values():
+                if "schema" in media:
+                    media["schema"] = process(
+                        media["schema"], f"{component_name}Body", lift_root=True
+                    )
+    for component_name, response in components.get("responses", {}).items():
+        if "$ref" not in response:
+            for media in response.get("content", {}).values():
+                if "schema" in media:
+                    media["schema"] = process(
+                        media["schema"], f"{component_name}Response", lift_root=True
+                    )
+
     for path_item in document.get("paths", {}).values():
         for parameter in path_item.get("parameters", []):
             if "schema" in parameter:
@@ -117,6 +132,7 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
                             f"{operation_name}Response{status}",
                             lift_root=True,
                         )
+    _split_directional_schemas(document)
     try:
         _validate_references(document)
         _validate_schema_semantics(schemas)
@@ -370,3 +386,119 @@ def _schema_type_signature(schema: dict[str, Any]) -> str:
     if "anyOf" in schema:
         return "anyOf"
     return "unknown"
+
+
+def _split_directional_schemas(document: dict[str, Any]) -> None:
+    components = document.get("components", {})
+    schemas: dict[str, dict[str, Any]] = components.get("schemas", {})
+    originals = deepcopy(schemas)
+    prefix = "#/components/schemas/"
+    needs_cache: dict[tuple[str, str], bool] = {}
+    variants: dict[tuple[str, str], str] = {}
+
+    def reference_name(reference: str) -> str | None:
+        if not reference.startswith(prefix):
+            return None
+        return reference.removeprefix(prefix).replace("~1", "/").replace("~0", "~")
+
+    def needs_variant(name: str, mode: str, seen: frozenset[str] = frozenset()) -> bool:
+        key = name, mode
+        if key in needs_cache:
+            return needs_cache[key]
+        if name in seen or name not in originals:
+            return False
+        excluded = "readOnly" if mode == "request" else "writeOnly"
+
+        def inspect(value: Any) -> bool:
+            if isinstance(value, dict):
+                if value.get(excluded) is True:
+                    return True
+                reference = value.get("$ref")
+                target = (
+                    reference_name(reference) if isinstance(reference, str) else None
+                )
+                if target and needs_variant(target, mode, seen | {name}):
+                    return True
+                return any(inspect(item) for item in value.values())
+            if isinstance(value, list):
+                return any(inspect(item) for item in value)
+            return False
+
+        result = inspect(originals[name])
+        needs_cache[key] = result
+        return result
+
+    def variant_name(name: str, mode: str) -> str:
+        key = name, mode
+        if key in variants:
+            return variants[key]
+        candidate = f"{name}{'Request' if mode == 'request' else 'Response'}"
+        if candidate in schemas:
+            raise GenerationError(f"directional schema name collision: {candidate}")
+        variants[key] = candidate
+        schemas[candidate] = {}
+        schemas[candidate] = transform(originals[name], mode)
+        return candidate
+
+    def transform(value: Any, mode: str) -> Any:
+        if isinstance(value, list):
+            return [transform(item, mode) for item in value]
+        if not isinstance(value, dict):
+            return value
+        reference = value.get("$ref")
+        target = reference_name(reference) if isinstance(reference, str) else None
+        if target and needs_variant(target, mode):
+            rewritten = dict(value)
+            rewritten["$ref"] = f"{prefix}{variant_name(target, mode)}"
+            return rewritten
+        result = {key: transform(item, mode) for key, item in value.items()}
+        properties = value.get("properties")
+        if isinstance(properties, dict):
+            excluded = "readOnly" if mode == "request" else "writeOnly"
+            kept = {
+                name: transform(schema, mode)
+                for name, schema in properties.items()
+                if schema.get(excluded) is not True
+            }
+            result["properties"] = kept
+            if isinstance(value.get("required"), list):
+                result["required"] = [
+                    name for name in value["required"] if name in kept
+                ]
+        discriminator = result.get("discriminator")
+        if isinstance(discriminator, dict) and isinstance(
+            discriminator.get("mapping"), dict
+        ):
+            discriminator["mapping"] = {
+                key: (
+                    f"{prefix}{variant_name(target, mode)}"
+                    if (target := reference_name(reference))
+                    and needs_variant(target, mode)
+                    else reference
+                )
+                for key, reference in discriminator["mapping"].items()
+            }
+        return result
+
+    def transform_content(container: dict[str, Any], mode: str) -> None:
+        for media in container.get("content", {}).values():
+            if "schema" in media:
+                media["schema"] = transform(media["schema"], mode)
+
+    for request_body in components.get("requestBodies", {}).values():
+        if "$ref" not in request_body:
+            transform_content(request_body, "request")
+    for response in components.get("responses", {}).values():
+        if "$ref" not in response:
+            transform_content(response, "response")
+    for path_item in document.get("paths", {}).values():
+        for method in HttpMethod:
+            operation = path_item.get(method.value)
+            if not operation:
+                continue
+            request_body = operation.get("requestBody", {})
+            if "$ref" not in request_body:
+                transform_content(request_body, "request")
+            for response in operation.get("responses", {}).values():
+                if "$ref" not in response:
+                    transform_content(response, "response")
