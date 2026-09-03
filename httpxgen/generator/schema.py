@@ -1,7 +1,6 @@
 from collections.abc import Mapping
 from typing import Any
 
-from httpxgen.generator.errors import GenerationError
 from httpxgen.generator.naming import class_name, string_literal
 
 
@@ -29,7 +28,9 @@ def schema_type(schema: Mapping[str, Any]) -> str:
         nullable = nullable or "null" in raw_type
         types = [item for item in raw_type if item != "null"]
         annotation = " | ".join(_plain_type(item, schema) for item in types) or "None"
-        return f"{annotation} | None" if nullable and annotation != "None" else annotation
+        return (
+            f"{annotation} | None" if nullable and annotation != "None" else annotation
+        )
 
     annotation = _plain_type(raw_type, schema)
     return f"{annotation} | None" if nullable and annotation != "None" else annotation
@@ -41,15 +42,14 @@ def split_all_of(
     if not (all_of := schema.get("allOf")):
         return [], schema
     bases = [schema_type(item) for item in all_of if "$ref" in item]
-    if len(bases) > 1:
-        raise GenerationError("multiple inheritance in allOf is not supported")
-
     merged: dict[str, Any] = {"type": "object", "properties": {}, "required": []}
-    for item in (item for item in all_of if "$ref" not in item):
+    for item in [schema, *(item for item in all_of if "$ref" not in item)]:
         merged["properties"].update(item.get("properties", {}))
         merged["required"].extend(item.get("required", []))
         if item.get("additionalProperties") is False:
             merged["additionalProperties"] = False
+        elif isinstance(item.get("additionalProperties"), Mapping):
+            merged["additionalProperties"] = item["additionalProperties"]
     return bases, merged
 
 

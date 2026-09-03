@@ -8,6 +8,8 @@ from httpxgen.openapi import HttpMethod, OpenAPISpec
 
 def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
     document = spec.model_dump(by_alias=True, exclude_none=True)
+    if spec.openapi.startswith("3.0"):
+        _normalize_oas30_keywords(document)
     components = document.setdefault("components", {})
     schemas: dict[str, dict[str, Any]] = components.setdefault("schemas", {})
     if "ApiError" in schemas and "ApiErrorModel" not in schemas:
@@ -19,6 +21,7 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
         )
         components = document["components"]
         schemas = components["schemas"]
+    _normalize_discriminators(schemas)
 
     def unique_name(suggested: str, schema: dict[str, Any]) -> str:
         base = class_name(suggested)
@@ -67,7 +70,8 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
             siblings = {
                 key: value
                 for key, value in schema.items()
-                if key in {"nullable", "default", "description", "readOnly", "writeOnly"}
+                if key
+                in {"nullable", "default", "description", "readOnly", "writeOnly"}
             }
             return {"$ref": f"#/components/schemas/{name}", **siblings}
         return schema
@@ -79,7 +83,9 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
         for parameter in path_item.get("parameters", []):
             if "schema" in parameter:
                 parameter["schema"] = process(
-                    parameter["schema"], f"{parameter.get('name', 'Parameter')}Parameter", lift_root=True
+                    parameter["schema"],
+                    f"{parameter.get('name', 'Parameter')}Parameter",
+                    lift_root=True,
                 )
         for method in HttpMethod:
             operation = path_item.get(method.value)
@@ -111,6 +117,7 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
                             lift_root=True,
                         )
     try:
+        _validate_references(document)
         return OpenAPISpec.model_validate(document)
     except Exception as error:
         raise GenerationError(f"failed to normalize inline schemas: {error}") from error
@@ -122,3 +129,87 @@ def _rewrite_reference(value: Any, old: str, new: str) -> Any:
     if isinstance(value, list):
         return [_rewrite_reference(item, old, new) for item in value]
     return new if value == old else value
+
+
+def _normalize_discriminators(schemas: dict[str, dict[str, Any]]) -> None:
+    prefix = "#/components/schemas/"
+    for union in list(schemas.values()):
+        variants = union.get("oneOf") or union.get("anyOf")
+        discriminator = union.get("discriminator", {})
+        property_name = discriminator.get("propertyName")
+        if not variants or not property_name:
+            continue
+        mapping = discriminator.get("mapping", {})
+        values_by_reference = {reference: value for value, reference in mapping.items()}
+        for variant in variants:
+            reference = variant.get("$ref") if isinstance(variant, dict) else None
+            if not isinstance(reference, str) or not reference.startswith(prefix):
+                continue
+            component_name = (
+                reference.removeprefix(prefix).replace("~1", "/").replace("~0", "~")
+            )
+            component = schemas.get(component_name)
+            if component is None:
+                continue
+            value = values_by_reference.get(reference, component_name)
+            target = component
+            if component.get("allOf"):
+                inline_parts = [
+                    item for item in component["allOf"] if "$ref" not in item
+                ]
+                if not inline_parts:
+                    inline_parts.append({"type": "object", "properties": {}})
+                    component["allOf"].append(inline_parts[0])
+                target = inline_parts[-1]
+            properties = target.setdefault("properties", {})
+            field = properties.setdefault(property_name, {"type": "string"})
+            if "const" not in field and "enum" not in field:
+                field["const"] = value
+            required = target.setdefault("required", [])
+            if property_name not in required:
+                required.append(property_name)
+
+
+def _validate_references(document: dict[str, Any]) -> None:
+    components = document.get("components", {})
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            reference = value.get("$ref")
+            if isinstance(reference, str):
+                prefix = "#/components/"
+                if not reference.startswith(prefix):
+                    raise GenerationError(
+                        f"only local component references are supported: {reference}"
+                    )
+                section_and_name = reference.removeprefix(prefix).split("/", 1)
+                if len(section_and_name) != 2:
+                    raise GenerationError(f"invalid component reference: {reference}")
+                section, encoded_name = section_and_name
+                name = encoded_name.replace("~1", "/").replace("~0", "~")
+                if name not in components.get(section, {}):
+                    raise GenerationError(f"unresolved reference: {reference}")
+            for item in value.values():
+                visit(item)
+        elif isinstance(value, list):
+            for item in value:
+                visit(item)
+
+    visit(document)
+
+
+def _normalize_oas30_keywords(value: Any) -> None:
+    if isinstance(value, dict):
+        if isinstance(value.get("exclusiveMinimum"), bool):
+            exclusive = value.pop("exclusiveMinimum")
+            if exclusive and "minimum" in value:
+                value["exclusiveMinimum"] = value.pop("minimum")
+        if isinstance(value.get("exclusiveMaximum"), bool):
+            exclusive = value.pop("exclusiveMaximum")
+            if exclusive and "maximum" in value:
+                value["exclusiveMaximum"] = value.pop("maximum")
+        for item in value.values():
+            _normalize_oas30_keywords(item)
+    elif isinstance(value, list):
+        for item in value:
+            _normalize_oas30_keywords(item)

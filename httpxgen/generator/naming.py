@@ -20,6 +20,13 @@ def identifier(value: str) -> str:
     return value
 
 
+def field_identifier(value: str) -> str:
+    result = identifier(value)
+    if result.startswith("model_"):
+        result += "_"
+    return result
+
+
 def enum_member(value: str) -> str:
     result = re.sub(r"\W+", "_", value).strip("_").upper() or "EMPTY"
     return f"VALUE_{result}" if result[0].isdigit() else result

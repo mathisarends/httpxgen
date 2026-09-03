@@ -75,7 +75,10 @@ def test_render_client_does_not_create_params_for_an_operation_without_queries()
     assert "CreateChargeParams" not in source
     assert "params=" not in source
     assert "if body is not None" not in source
-    assert "body_arguments['json'] = TypeAdapter(CreateChargeRequest).dump_python(" in source
+    assert (
+        "body_arguments['json'] = TypeAdapter(CreateChargeRequest).dump_python("
+        in source
+    )
 
 
 def test_render_client_guards_optional_request_body_serialization():

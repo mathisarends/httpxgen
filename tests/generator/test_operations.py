@@ -174,14 +174,10 @@ def test_security_is_inherited_and_can_be_disabled_per_operation():
             "security": [{"bearerAuth": []}],
             "paths": {
                 "/private": {"get": _empty_operation("private")},
-                "/public": {
-                    "get": {**_empty_operation("public"), "security": []}
-                },
+                "/public": {"get": {**_empty_operation("public"), "security": []}},
             },
             "components": {
-                "securitySchemes": {
-                    "bearerAuth": {"type": "http", "scheme": "bearer"}
-                }
+                "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer"}}
             },
         }
     )
@@ -190,6 +186,44 @@ def test_security_is_inherited_and_can_be_disabled_per_operation():
 
     assert operations["private"].security == (("bearerAuth",),)
     assert operations["public"].security == ()
+
+
+def test_request_body_and_response_component_references_are_resolved():
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {
+                "/items": {
+                    "post": {
+                        "operationId": "createItem",
+                        "requestBody": {"$ref": "#/components/requestBodies/Item"},
+                        "responses": {
+                            "201": {"$ref": "#/components/responses/Created"}
+                        },
+                    }
+                }
+            },
+            "components": {
+                "requestBodies": {
+                    "Item": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "string"}}},
+                    }
+                },
+                "responses": {
+                    "Created": {
+                        "content": {"text/plain": {"schema": {"type": "string"}}}
+                    }
+                },
+            },
+        }
+    )
+
+    operation = read_operations(spec)[0]
+
+    assert operation.body_annotation == "str"
+    assert operation.body_required
+    assert operation.responses[0].kind == "text"
 
 
 def _spec_with_operation(

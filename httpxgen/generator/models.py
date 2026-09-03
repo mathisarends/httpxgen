@@ -6,7 +6,7 @@ from httpxgen.generator.errors import GenerationError
 from httpxgen.generator.naming import (
     class_name,
     enum_member,
-    identifier,
+    field_identifier,
     string_literal,
     used_names,
 )
@@ -38,6 +38,17 @@ def render_models(
     schemas: Mapping[str, Any],
     operations: Sequence[Operation] = (),
 ) -> str:
+    query_names = [
+        query_model_name(operation)
+        for operation in operations
+        if query_parameters(operation)
+    ]
+    component_names = [class_name(name) for name in schemas]
+    conflicts = sorted(set(query_names).intersection(component_names))
+    if conflicts:
+        raise GenerationError(
+            f"generated query model names conflict with components: {', '.join(conflicts)}"
+        )
     discriminator_enums_by_field = _discriminator_enums(schemas)
     blocks = [
         *(
@@ -82,7 +93,11 @@ def _render_query_model(operation: Operation) -> str:
 def _render_query_field(parameter: Parameter) -> str:
     has_default = parameter.default is not NO_DEFAULT
     default_source = (
-        repr(parameter.default) if has_default else None if parameter.required else "None"
+        repr(parameter.default)
+        if has_default
+        else None
+        if parameter.required
+        else "None"
     )
     arguments = [f"{name}={value!r}" for name, value in parameter.constraints]
     if parameter.name != parameter.wire_name:
@@ -165,6 +180,9 @@ def _discriminator_values(
 
 
 def _render_discriminator_enum(enum: _DiscriminatorEnum) -> str:
+    names = [enum_member(value) for value in enum.values]
+    if len(names) != len(set(names)):
+        raise GenerationError(f"{enum.name}: discriminator values collide in Python")
     members = "\n".join(
         f"    {enum_member(value)} = {string_literal(value)}" for value in enum.values
     )
@@ -202,9 +220,10 @@ def _render_component(
 ) -> str:
     component_class_name = class_name(name)
     enum = schema.get("enum")
-    if enum is not None:
-        if not all(isinstance(value, str) for value in enum):
-            raise GenerationError(f"{name}: only string component enums are supported")
+    if enum is not None and all(isinstance(value, str) for value in enum):
+        member_names = [enum_member(value) for value in enum]
+        if len(member_names) != len(set(member_names)):
+            raise GenerationError(f"{name}: enum values collide as Python names")
         members = "\n".join(
             f"    {enum_member(value)} = {string_literal(value)}" for value in enum
         )
@@ -213,6 +232,8 @@ def _render_component(
             name=component_class_name,
             members=members or "    pass",
         ).rstrip("\n")
+    if enum is not None:
+        return f"{component_class_name} = {schema_type(schema)}"
 
     variants = schema.get("oneOf") or schema.get("anyOf")
     if variants:
@@ -242,12 +263,15 @@ def _render_component(
     if not is_object(own_schema) and not bases:
         return f"{component_class_name} = {schema_type(own_schema)}"
 
-    base = bases[0] if bases else "BaseModel"
+    base = ", ".join(bases) if bases else "BaseModel"
     properties = own_schema.get("properties", {})
     required = set(own_schema.get("required", []))
+    field_names = [field_identifier(item) for item in properties]
+    if len(field_names) != len(set(field_names)):
+        raise GenerationError(f"{name}: property names collide in Python")
     fields = [
         _render_field(
-            field_name=identifier(wire_name),
+            field_name=field_identifier(wire_name),
             wire_name=wire_name,
             required=wire_name in required,
             schema=field_schema,
@@ -255,6 +279,12 @@ def _render_component(
         )
         for wire_name, field_schema in properties.items()
     ]
+    additional = own_schema.get("additionalProperties")
+    if isinstance(additional, Mapping):
+        fields.append(
+            "__pydantic_extra__: dict[str, "
+            f"{schema_type(additional)}] = Field(init=False)"
+        )
     return render_template(
         TemplateName.MODEL,
         name=component_class_name,

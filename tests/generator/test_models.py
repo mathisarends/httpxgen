@@ -36,9 +36,54 @@ def test_render_models_generates_enums_aliases_and_constrained_models():
     assert "status: Status = None" in source
 
 
-def test_render_models_rejects_non_string_component_enums():
-    with pytest.raises(GenerationError, match="only string component enums"):
-        render_models({"Status": {"enum": [1, 2]}})
+def test_render_models_supports_numeric_component_enums_as_literals():
+    source = render_models({"Status": {"type": "integer", "enum": [1, 2]}})
+
+    assert "Status = Literal[1, 2]" in source
+
+
+def test_render_models_rejects_normalized_property_and_enum_collisions():
+    with pytest.raises(GenerationError, match="property names collide"):
+        render_models(
+            {
+                "Collision": {
+                    "type": "object",
+                    "properties": {"foo-bar": {}, "foo_bar": {}},
+                }
+            }
+        )
+    with pytest.raises(GenerationError, match="enum values collide"):
+        render_models(
+            {"Status": {"type": "string", "enum": ["in-progress", "in progress"]}}
+        )
+
+
+def test_render_models_supports_multiple_all_of_bases_and_typed_extras():
+    source = render_models(
+        {
+            "Identity": {
+                "type": "object",
+                "properties": {"id": {"type": "string"}},
+            },
+            "Audit": {
+                "type": "object",
+                "properties": {"created": {"type": "string"}},
+            },
+            "Entity": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/Identity"},
+                    {"$ref": "#/components/schemas/Audit"},
+                    {
+                        "type": "object",
+                        "additionalProperties": {"type": "integer"},
+                    },
+                ]
+            },
+        }
+    )
+
+    assert "class Entity(Identity, Audit):" in source
+    assert "__pydantic_extra__: dict[str, int] = Field(init=False)" in source
 
 
 def test_render_models_generates_query_parameter_models():

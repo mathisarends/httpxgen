@@ -162,6 +162,7 @@ class PaymentsClient:
         query: list[tuple[str, str]] = []
         headers = dict(self._headers)
         cookies: dict[str, str] = {}
+        headers.setdefault('Accept', 'application/json')
         params = ListChargesParams(
             status=status,
             cursor=cursor,
@@ -201,6 +202,7 @@ class PaymentsClient:
         query: list[tuple[str, str]] = []
         headers = dict(self._headers)
         cookies: dict[str, str] = {}
+        headers.setdefault('Accept', 'application/json')
 
         _apply_security(
             self._credentials, (('bearerAuth',),), headers, query, cookies
@@ -240,6 +242,7 @@ class PaymentsClient:
         query: list[tuple[str, str]] = []
         headers = dict(self._headers)
         cookies: dict[str, str] = {}
+        headers.setdefault('Accept', 'application/json')
         path = path.replace('{chargeId}', _serialize_path('chargeId', charge_id, 'simple', False, False))
 
         _apply_security(
@@ -267,13 +270,15 @@ class PaymentsClient:
         timeout: float | None = None,
     ) -> Customer:
         path = '/customers/{customerId}'
+        headers = dict(self._headers)
+        headers.setdefault('Accept', 'application/json')
         path = path.replace('{customerId}', _serialize_path('customerId', customer_id, 'simple', False, False))
 
 
         response = await self._client.request(
             method=_HttpMethod.GET,
             url=f"{self._base_url}{path}",
-            headers=self._headers,
+            headers=headers,
             timeout=self._timeout if timeout is None else timeout,
         )
 
@@ -332,6 +337,7 @@ class PaymentsClient:
         query: list[tuple[str, str]] = []
         headers = dict(self._headers)
         cookies: dict[str, str] = {}
+        headers.setdefault('Accept', 'application/json')
 
         _apply_security(
             self._credentials, (('bearerAuth',),), headers, query, cookies

@@ -48,9 +48,7 @@ def test_generated_client_serializes_parameters_security_and_typed_errors(tmp_pa
                                         "schema": {
                                             "type": "object",
                                             "required": ["id"],
-                                            "properties": {
-                                                "id": {"type": "string"}
-                                            },
+                                            "properties": {"id": {"type": "string"}},
                                         }
                                     }
                                 }
@@ -73,9 +71,7 @@ def test_generated_client_serializes_parameters_security_and_typed_errors(tmp_pa
                 }
             },
             "components": {
-                "securitySchemes": {
-                    "bearerAuth": {"type": "http", "scheme": "bearer"}
-                }
+                "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer"}}
             },
         }
     )
@@ -128,5 +124,80 @@ def test_generated_client_serializes_parameters_security_and_typed_errors(tmp_pa
             name
             for name in sys.modules
             if name == "ordinary_api" or name.startswith("ordinary_api.")
+        ]:
+            del sys.modules[name]
+
+
+def test_generated_client_sends_multipart_and_api_key_security(tmp_path):
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "security": [{"apiKey": []}],
+            "paths": {
+                "/upload": {
+                    "post": {
+                        "operationId": "upload",
+                        "requestBody": {
+                            "required": True,
+                            "content": {
+                                "multipart/form-data": {
+                                    "schema": {
+                                        "type": "object",
+                                        "required": ["file", "description"],
+                                        "properties": {
+                                            "file": {
+                                                "type": "string",
+                                                "format": "binary",
+                                            },
+                                            "description": {"type": "string"},
+                                        },
+                                    }
+                                }
+                            },
+                        },
+                        "responses": {"2XX": {"content": {"text/plain": {}}}},
+                    }
+                }
+            },
+            "components": {
+                "securitySchemes": {
+                    "apiKey": {"type": "apiKey", "in": "query", "name": "key"}
+                }
+            },
+        }
+    )
+    package_dir = tmp_path / "upload_api"
+    write_client(spec=spec, package_dir=package_dir, package_name="upload_api")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["key"] == "secret"
+        assert request.headers["Content-Type"].startswith("multipart/form-data;")
+        assert b'form-data; name="description"' in request.content
+        assert b'form-data; name="file"' in request.content
+        assert b"payload" in request.content
+        return httpx.Response(201, text="stored")
+
+    sys.path.insert(0, str(tmp_path))
+    try:
+        package = importlib.import_module("upload_api")
+        http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = package.UploadApiClient(
+            http_client,
+            "https://example.test",
+            credentials={"apiKey": "secret"},
+        )
+
+        async def exercise():
+            body = package.UploadBody(file=b"payload", description="avatar")
+            assert await client.upload(body) == "stored"
+            await client.aclose()
+
+        asyncio.run(exercise())
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in [
+            name
+            for name in sys.modules
+            if name == "upload_api" or name.startswith("upload_api.")
         ]:
             del sys.modules[name]

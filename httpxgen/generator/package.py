@@ -6,7 +6,20 @@ from httpxgen.generator.models import exported_model_names
 from httpxgen.generator.naming import string_literal
 from httpxgen.generator.templates import TemplateName, render_template
 
-_RESERVED_NAMES = {"ApiError"}
+_RESERVED_NAMES = {
+    "Annotated",
+    "Any",
+    "ApiError",
+    "BaseModel",
+    "ConfigDict",
+    "Field",
+    "Literal",
+    "StrEnum",
+    "TypeAdapter",
+    "UUID",
+    "date",
+    "datetime",
+}
 
 
 def render_package_init(schemas: Mapping[str, Any], client_name: str) -> str:

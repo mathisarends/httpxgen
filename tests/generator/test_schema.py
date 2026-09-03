@@ -1,6 +1,5 @@
 import pytest
 
-from httpxgen.generator import GenerationError
 from httpxgen.generator.schema import (
     allows_none,
     is_object,
@@ -58,16 +57,18 @@ def test_split_all_of_separates_a_base_from_owned_fields():
     }
 
 
-def test_split_all_of_rejects_multiple_base_models():
-    with pytest.raises(GenerationError, match="multiple inheritance"):
-        split_all_of(
-            {
-                "allOf": [
-                    {"$ref": "#/components/schemas/First"},
-                    {"$ref": "#/components/schemas/Second"},
-                ]
-            }
-        )
+def test_split_all_of_returns_multiple_base_models():
+    bases, own_schema = split_all_of(
+        {
+            "allOf": [
+                {"$ref": "#/components/schemas/First"},
+                {"$ref": "#/components/schemas/Second"},
+            ]
+        }
+    )
+
+    assert bases == ["First", "Second"]
+    assert own_schema["properties"] == {}
 
 
 def test_ordered_schemas_places_dependencies_first_and_tolerates_cycles():

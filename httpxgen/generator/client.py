@@ -2,10 +2,10 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from httpxgen.generator.naming import class_name, identifier, string_literal, used_names
+from httpxgen.generator.naming import class_name, used_names
 from httpxgen.generator.operations import (
-    Body,
     NO_DEFAULT,
+    Body,
     Operation,
     Parameter,
     Response,
@@ -74,9 +74,7 @@ def _render_supporting_types(operations: Sequence[Operation]) -> str:
             name: (item.kind, item.location, item.parameter_name, item.prefix)
             for name, item in schemes.items()
         }
-        blocks.append(
-            f"_SECURITY_SCHEMES = {definitions!r}\n\n{_SECURITY_HELPER}"
-        )
+        blocks.append(f"_SECURITY_SCHEMES = {definitions!r}\n\n{_SECURITY_HELPER}")
     return "\n\n\n".join(blocks)
 
 
@@ -119,7 +117,11 @@ def _render_client_imports(
             lines.append(model_import)
         else:
             lines.extend(
-                ["from .models import (", *(f"    {name}," for name in model_names), ")"]
+                [
+                    "from .models import (",
+                    *(f"    {name}," for name in model_names),
+                    ")",
+                ]
             )
     return "\n".join(lines)
 
@@ -151,20 +153,27 @@ def _render_operation(operation: Operation) -> str:
         f"method=_HttpMethod.{operation.method.name}",
         'url=f"{self._base_url}{path}"',
     ]
-    if any(item.location == "query" for item in operation.parameters) or operation.security:
+    if (
+        any(item.location == "query" for item in operation.parameters)
+        or operation.security
+    ):
         request_args.append("params=query")
     needs_headers = (
         any(item.location == "header" for item in operation.parameters)
         or bool(operation.security)
-        or (_operation_body(operation) is not None and _operation_body(operation).kind in {"binary", "text"})
+        or any(item.media_type for item in operation.responses)
+        or (
+            _operation_body(operation) is not None
+            and _operation_body(operation).kind in {"binary", "text"}
+        )
     )
     if needs_headers:
         request_args.append("headers=headers")
     else:
         request_args.append("headers=self._headers")
-    if any(item.location == "cookie" for item in operation.parameters) or _security_uses(
-        operation, "cookie"
-    ):
+    if any(
+        item.location == "cookie" for item in operation.parameters
+    ) or _security_uses(operation, "cookie"):
         request_args.append("cookies=cookies")
     if _operation_body(operation):
         request_args.append("**body_arguments")
@@ -190,9 +199,13 @@ def _parameter_default(parameter: Parameter) -> str:
 def _render_parameter_assignments(operation: Operation) -> str:
     lines = [f"        path = {operation.path!r}\n"]
     has_query = any(item.location == "query" for item in operation.parameters)
-    has_headers = any(item.location == "header" for item in operation.parameters) or (
-        _operation_body(operation) is not None
-        and _operation_body(operation).kind in {"binary", "text"}
+    has_headers = (
+        any(item.location == "header" for item in operation.parameters)
+        or (
+            _operation_body(operation) is not None
+            and _operation_body(operation).kind in {"binary", "text"}
+        )
+        or any(item.media_type for item in operation.responses)
     )
     has_cookies = any(item.location == "cookie" for item in operation.parameters)
     if has_query or operation.security:
@@ -201,6 +214,15 @@ def _render_parameter_assignments(operation: Operation) -> str:
         lines.append("        headers = dict(self._headers)\n")
     if has_cookies or operation.security:
         lines.append("        cookies: dict[str, str] = {}\n")
+    accepted = list(
+        dict.fromkeys(
+            item.media_type
+            for item in operation.responses
+            if item.media_type is not None
+        )
+    )
+    if accepted:
+        lines.append(f"        headers.setdefault('Accept', {', '.join(accepted)!r})\n")
     query_items = query_parameters(operation)
     if query_items:
         lines.append(f"        params = {query_model_name(operation)}(\n")
@@ -346,7 +368,7 @@ def _response_expression(response: Response) -> str:
     return f"TypeAdapter({response.annotation}).validate_python(response.json())"
 
 
-_PARAMETER_HELPERS = '''\
+_PARAMETER_HELPERS = """\
 def _scalar(value: Any) -> str:
     if isinstance(value, Enum):
         value = value.value
@@ -400,10 +422,10 @@ def _serialize_path(
         return f".{rendered}"
     if style == "matrix":
         return f";{name}={rendered}"
-    return rendered'''
+    return rendered"""
 
 
-_SECURITY_HELPER = '''\
+_SECURITY_HELPER = """\
 def _apply_security(
     credentials: Mapping[str, str | tuple[str, str]],
     requirements: tuple[tuple[str, ...], ...],
@@ -435,4 +457,4 @@ def _apply_security(
         elif location == "query":
             query.append((parameter_name, value))
         else:
-            cookies[parameter_name] = value'''
+            cookies[parameter_name] = value"""

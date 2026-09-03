@@ -51,6 +51,7 @@ class Response:
     model_annotation: str | None
     success: bool = True
     kind: str = "json"
+    media_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -91,7 +92,7 @@ def read_operations(spec: OpenAPISpec) -> tuple[Operation, ...]:
             parameters = _read_parameters(
                 [*path_item.parameters, *operation.parameters], spec
             )
-            _validate_parameters(path, parameters)
+            _validate_parameters(path, parameters, has_body=body is not None)
             security_source = (
                 spec.security if operation.security is None else operation.security
             )
@@ -173,7 +174,11 @@ def _read_parameters(
         if value.content:
             schema, _, _ = _select_media(value.content, "parameter")
         annotation = schema_type(schema)
-        if not required and schema.get("default", NO_DEFAULT) is NO_DEFAULT and "None" not in annotation:
+        if (
+            not required
+            and schema.get("default", NO_DEFAULT) is NO_DEFAULT
+            and "None" not in annotation
+        ):
             annotation = f"{annotation} | None"
         style = value.style or (
             "form" if value.location in {"query", "cookie"} else "simple"
@@ -196,14 +201,20 @@ def _read_parameters(
     return tuple(parameters)
 
 
-def _validate_parameters(path: str, parameters: Sequence[Parameter]) -> None:
+def _validate_parameters(
+    path: str, parameters: Sequence[Parameter], *, has_body: bool
+) -> None:
     names = [item.name for item in parameters]
     if len(names) != len(set(names)):
         raise GenerationError(f"{path} has parameter names that collide in Python")
+    reserved = {"self", "timeout"} | ({"body"} if has_body else set())
+    conflicts = sorted(reserved.intersection(names))
+    if conflicts:
+        raise GenerationError(
+            f"{path} has parameter names reserved by the client: {', '.join(conflicts)}"
+        )
     placeholders = set(re.findall(r"\{([^{}]+)\}", path))
-    path_parameters = {
-        item.wire_name for item in parameters if item.location == "path"
-    }
+    path_parameters = {item.wire_name for item in parameters if item.location == "path"}
     if placeholders != path_parameters:
         missing = sorted(placeholders - path_parameters)
         extra = sorted(path_parameters - placeholders)
@@ -226,9 +237,7 @@ def _validate_parameters(path: str, parameters: Sequence[Parameter]) -> None:
             )
 
 
-def _read_body(
-    value: RequestBody | Reference | None, spec: OpenAPISpec
-) -> Body | None:
+def _read_body(value: RequestBody | Reference | None, spec: OpenAPISpec) -> Body | None:
     if value is None:
         return None
     if isinstance(value, Reference):
@@ -245,9 +254,14 @@ def _read_body(
         if kind == "text"
         else schema_type(schema)
     )
+    body_shape = schema
+    if "$ref" in schema:
+        referenced_name = _reference_name(schema["$ref"], "schemas")
+        body_shape = spec.components.schemas.get(referenced_name, schema)
+    _, body_shape = split_all_of(body_shape)
     binary_fields = tuple(
         name
-        for name, field in schema.get("properties", {}).items()
+        for name, field in body_shape.get("properties", {}).items()
         if field.get("format") == "binary"
     )
     return Body(annotation, value.required, media_type, kind, binary_fields)
@@ -264,13 +278,11 @@ def _read_responses(
         response = raw_response
         if isinstance(response, Reference):
             response = APIResponse.model_validate(
-                _resolve_component(
-                    response.ref, "responses", spec.components.responses
-                )
+                _resolve_component(response.ref, "responses", spec.components.responses)
             )
         success = _is_success_status(status_text)
         if response.content:
-            schema, _, kind = _select_media(response.content, "response")
+            schema, media_type, kind = _select_media(response.content, "response")
             annotation = (
                 "bytes"
                 if kind == "binary"
@@ -279,7 +291,7 @@ def _read_responses(
                 else schema_type(schema)
             )
         else:
-            schema, kind, annotation = None, "empty", "None"
+            schema, media_type, kind, annotation = None, None, "empty", "None"
         status: int | str = (
             int(status_text) if status_text.isdigit() else status_text.upper()
         )
@@ -296,6 +308,7 @@ def _read_responses(
                 model_annotation=_response_model(schema, spec.components.schemas),
                 success=success,
                 kind=kind,
+                media_type=media_type,
             )
         )
     if not any(response.success for response in responses):
@@ -332,11 +345,7 @@ def _select_media(
     for media_type, media in content.items():
         normalized = media_type.split(";", 1)[0].strip().lower()
         if normalized == "application/json" or normalized.endswith("+json"):
-            if media.schema_ is None:
-                raise GenerationError(
-                    f"{context} media type {media_type!r} has no schema"
-                )
-            return media.schema_, media_type, "json"
+            return media.schema_ or {}, media_type, "json"
     for media_type, media in content.items():
         normalized = media_type.split(";", 1)[0].strip().lower()
         if normalized == "multipart/form-data":
@@ -345,9 +354,10 @@ def _select_media(
             return media.schema_ or {}, media_type, "form"
         if normalized.startswith("text/"):
             return media.schema_ or {"type": "string"}, media_type, "text"
-        if normalized == "application/octet-stream" or (
-            media.schema_ or {}
-        ).get("format") == "binary":
+        if (
+            normalized == "application/octet-stream"
+            or (media.schema_ or {}).get("format") == "binary"
+        ):
             return (
                 media.schema_ or {"type": "string", "format": "binary"},
                 media_type,
@@ -402,9 +412,7 @@ def _read_security_schemes(spec: OpenAPISpec) -> tuple[SecurityScheme, ...]:
             )
         elif kind in {"oauth2", "openIdConnect"}:
             result.append(
-                SecurityScheme(
-                    name, "bearer", "header", "Authorization", "Bearer"
-                )
+                SecurityScheme(name, "bearer", "header", "Authorization", "Bearer")
             )
         else:
             raise GenerationError(
