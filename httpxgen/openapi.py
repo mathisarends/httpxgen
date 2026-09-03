@@ -3,7 +3,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
 class HttpMethod(StrEnum):
     GET = "get"
     PUT = "put"
@@ -56,10 +55,6 @@ class PathItem(OpenAPIModel):
     head: APIOperation | None = None
     patch: APIOperation | None = None
 
-    def operation(self, method: HttpMethod) -> APIOperation | None:
-        return getattr(self, method.value)
-
-
 class Components(OpenAPIModel):
     schemas: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
@@ -76,7 +71,11 @@ class OpenAPISpec(OpenAPIModel):
 
     @field_validator("openapi")
     @classmethod
-    def validate_version(cls, value: str) -> str:
+    def _validate_version(cls, value: str) -> str:
         if not value.startswith("3."):
             raise ValueError("only OpenAPI 3.x documents are supported")
         return value
+
+
+def get_operation(path_item: PathItem, method: HttpMethod) -> APIOperation | None:
+    return getattr(path_item, method.value)
