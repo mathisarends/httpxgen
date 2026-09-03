@@ -3,6 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+
 class HttpMethod(StrEnum):
     GET = "get"
     PUT = "put"
@@ -54,6 +55,7 @@ class PathItem(OpenAPIModel):
     options: APIOperation | None = None
     head: APIOperation | None = None
     patch: APIOperation | None = None
+
 
 class Components(OpenAPIModel):
     schemas: dict[str, dict[str, Any]] = Field(default_factory=dict)

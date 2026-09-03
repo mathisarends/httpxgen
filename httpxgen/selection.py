@@ -135,7 +135,9 @@ def _canonicalize_schema_names(
 
     rewritten_paths = {
         path: PathItem.model_validate(
-            _rewrite_references(item.model_dump(by_alias=True, exclude_none=True), names)
+            _rewrite_references(
+                item.model_dump(by_alias=True, exclude_none=True), names
+            )
         )
         for path, item in paths.items()
     }

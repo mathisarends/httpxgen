@@ -35,8 +35,7 @@ def _changed_files(package_dir: Path, output: Mapping[str, str]) -> list[Path]:
     return [
         path
         for relative, content in output.items()
-        if not (path := package_dir / relative).exists()
-        or path.read_text() != content
+        if not (path := package_dir / relative).exists() or path.read_text() != content
     ]
 
 
