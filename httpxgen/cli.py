@@ -11,9 +11,9 @@ from httpxgen.io import (
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Generate a typed async Python client from OpenAPI JSON."
+        description="Generate a typed async Python client from OpenAPI JSON or YAML."
     )
-    parser.add_argument("openapi", type=Path, help="OpenAPI JSON file")
+    parser.add_argument("openapi", type=Path, help="OpenAPI JSON or YAML file")
     parser.add_argument("output", type=Path, help="exact target package directory")
     parser.add_argument(
         "--package-name",

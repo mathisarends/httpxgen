@@ -1,3 +1,4 @@
+import re
 from enum import StrEnum
 from typing import Any
 
@@ -100,8 +101,8 @@ class OpenAPISpec(OpenAPIModel):
     @field_validator("openapi")
     @classmethod
     def _validate_version(cls, value: str) -> str:
-        if not value.startswith("3."):
-            raise ValueError("only OpenAPI 3.x documents are supported")
+        if not re.fullmatch(r"3\.(0|1)\.\d+(?:[-+].+)?", value):
+            raise ValueError("only OpenAPI 3.0 and 3.1 documents are supported")
         return value
 
 

@@ -39,7 +39,7 @@ httpxgen is only needed at build time — the generated package depends on `http
 ## Quick start
 
 ```sh
-httpxgen openapi.json src/payments --package-name payments
+httpxgen openapi.yaml src/payments --package-name payments
 ```
 
 ```
@@ -56,8 +56,9 @@ from payments import ApiError, CardPaymentMethod, CreateChargeRequest, Money, Pa
 
 async def main() -> None:
     async with PaymentsClient(
-        httpx.AsyncClient(headers={"Authorization": "Bearer …"}),
+        httpx.AsyncClient(),
         "https://payments.example.com/api",
+        credentials={"bearerAuth": "your-token"},
     ) as client:
         page = await client.list_charges(status="succeeded", page_size=50)
         for charge in page.items:
@@ -72,6 +73,8 @@ async def main() -> None:
             )
         except ApiError as error:
             print(error.status_code, error.body)
+            if error.parsed_body is not None:
+                print(error.parsed_body)
 
 
 asyncio.run(main())
@@ -110,7 +113,7 @@ asyncio.run(main())
 class ListChargesParams(BaseModel):
     status: ChargeStatus | None = None
     cursor: str | None = None
-    page_size: int | None = None
+    page_size: int = Field(25, ge=1, le=200)
 
 
 class _HttpMethod(StrEnum):
@@ -122,28 +125,43 @@ class PaymentsClient:
         self,
         status: ChargeStatus | None = None,
         cursor: str | None = None,
-        page_size: int | None = None,
+        page_size: int = 25,
         *,
         timeout: float | None = None,
     ) -> ChargePage:
+        path = "/charges"
+        headers = dict(self._headers)
         params = ListChargesParams(
             status=status,
             cursor=cursor,
             page_size=page_size,
         )
+        query = []
+        if params.status is not None:
+            query.extend(_serialize_query("status", params.status, "form", True))
+        if params.cursor is not None:
+            query.extend(_serialize_query("cursor", params.cursor, "form", True))
+        query.extend(_serialize_query("page_size", params.page_size, "form", True))
+        _apply_security(
+            self._credentials,
+            (("bearerAuth",),),
+            headers,
+            query,
+            {},
+        )
 
         response = await self._client.request(
             method=_HttpMethod.GET,
-            url=f"{self._base_url}/charges",
-            params=params.model_dump(mode="json", by_alias=True, exclude_none=True),
-            headers=self._headers,
+            url=f"{self._base_url}{path}",
+            params=query,
+            headers=headers,
             timeout=self._timeout if timeout is None else timeout,
         )
 
         if response.status_code == 200:
             return ChargePage.model_validate(response.json())
 
-        raise ApiError(response.status_code, response.text)
+        raise ApiError(response.status_code, response.text, response=response)
 ```
 
 Path parameters carry their spec format — `format: uuid` becomes `UUID`, not `str`:
@@ -155,9 +173,14 @@ Path parameters carry their spec format — `format: uuid` becomes `UUID`, not `
         *,
         timeout: float | None = None,
     ) -> Customer:
+        path = "/customers/{customerId}"
+        path = path.replace(
+            "{customerId}",
+            _serialize_path("customerId", customer_id, "simple", False, False),
+        )
         response = await self._client.request(
             method=_HttpMethod.GET,
-            url=f"{self._base_url}/customers/{customer_id}",
+            url=f"{self._base_url}{path}",
             ...
         )
         ...
@@ -172,7 +195,7 @@ Request bodies are a single typed `body` argument, serialized by alias and witho
         *,
         timeout: float | None = None,
     ) -> Charge:
-        json_body = TypeAdapter(CreateChargeRequest).dump_python(
+        body_arguments["json"] = TypeAdapter(CreateChargeRequest).dump_python(
             body, mode="json", by_alias=True, exclude_none=True
         )
         ...
@@ -185,6 +208,7 @@ http_client = httpx.AsyncClient()
 async with PaymentsClient(
     http_client,
     "https://payments.example.com/api",
+    credentials={"bearerAuth": "your-token"},
 ) as client:
     ...
 ```
@@ -246,7 +270,7 @@ httpxgen OPENAPI OUTPUT [--package-name NAME] [--tag TAG] [--schema-tag TAG] [--
 
 | Argument | Meaning |
 | --- | --- |
-| `OPENAPI` | OpenAPI **JSON** file |
+| `OPENAPI` | OpenAPI JSON or YAML file |
 | `OUTPUT` | exact target package directory (created if missing) |
 | `--package-name` | import name and client class prefix; defaults to the output directory name |
 | `--tag TAG` | generate only operations carrying this tag; repeatable |
@@ -314,15 +338,56 @@ client-check:
 	uvx httpxgen openapi.json src/payments --package-name payments --check
 ```
 
+## How the Payments API is handled
+
+The repository fixture in `specs/api.yaml` is the executable reference for a
+normal, non-trivial API:
+
+- Its global `bearerAuth` requirement becomes the `credentials` entry shown
+  above. `getCustomer` declares `security: []`, so that method remains public.
+- `page_size` is validated to be between 1 and 200 and defaults to 25. Optional
+  query values are omitted; arrays and objects follow their OpenAPI
+  `style`/`explode` rules.
+- Path values are percent-encoded. A value containing `/` remains one path
+  segment instead of changing the endpoint.
+- `CreateChargeRequest` is serialized as JSON by alias. JSON-compatible vendor
+  media types such as `application/problem+json` are handled as JSON too.
+- The avatar endpoint sends raw bytes with `Content-Type: image/png`. Form and
+  multipart schemas use `data=` and `files=` respectively.
+- A successful charge response becomes `Charge`. The documented 402 response
+  raises `ApiError`; its validated `ChargeError` is available as
+  `error.parsed_body`. Undocumented statuses also raise `ApiError`, with the
+  original `httpx.Response` on `error.response`.
+- The nested billing profile becomes a real generated model rather than
+  `dict[str, Any]`. Unknown response fields are retained unless the schema says
+  `additionalProperties: false`.
+- `oneOf` plus `discriminator` becomes a discriminated Pydantic union. Recursive
+  object models and discriminator `mapping` values are supported.
+- The schema component named `ApiError` is generated as `ApiErrorModel` to avoid
+  colliding with the runtime exception.
+
+When an operation offers several content types, httpxgen currently prefers JSON
+(including `+json`) and otherwise uses the first supported form, multipart,
+text, or binary type. Pass the base URL explicitly: `servers` is not used as an
+implicit network destination.
+
 ## Scope
 
-httpxgen deliberately targets a small, sharp happy path rather than every corner of the OpenAPI surface.
+httpxgen targets ordinary OpenAPI 3.0 and 3.1 client specifications, not every
+JSON Schema feature. It supports JSON/YAML input, local component references,
+path/query/header/cookie serialization, common request and response media types,
+numeric/default/status-range responses, typed error bodies, common security
+schemes, inline and recursive Pydantic models, enums, nullable values,
+discriminated unions, and practical `allOf` inheritance.
 
-**Supported** — OpenAPI 3.x, operations with a unique `operationId`, path/query/header parameters, `application/json` request bodies, explicit numeric 2xx responses, Pydantic models, string enums, local `$ref`s, `allOf` inheritance, `oneOf` / `anyOf` unions with discriminators, `date` / `date-time` / `uuid` formats, and one async client.
+Unsupported constructs fail generation where possible. Important remaining
+limitations are separate `readOnly`/`writeOnly` models, exact non-discriminated
+`oneOf` semantics, multiple selectable media types, response-header return
+models, external references, streaming, callbacks/webhooks, automatic
+pagination, and a synchronous client.
 
-**Not supported yet** — authentication schemes, non-JSON content (multipart, form, binary, streaming), typed error bodies, `default` and `2XX` response ranges, cookie parameters, parameter `style` / `explode` serialization, external `$ref`s, and sync clients.
-
-See [`MISSING_IMPL.md`](MISSING_IMPL.md) for the full gap analysis.
+See [`MISSING_IMPL.md`](MISSING_IMPL.md) for the prioritized checklist and the
+test requirements for each future step.
 
 ## Development
 

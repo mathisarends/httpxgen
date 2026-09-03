@@ -25,6 +25,7 @@ def test_openapi_3_document_is_parsed_with_aliases():
     assert operation.operation_id == "createCharge"
 
 
-def test_non_openapi_3_document_is_rejected():
-    with pytest.raises(ValidationError, match="only OpenAPI 3.x"):
-        OpenAPISpec.model_validate({"openapi": "2.0", "paths": {}})
+@pytest.mark.parametrize("version", ["2.0", "3.2.0", "3.latest"])
+def test_unsupported_openapi_document_is_rejected(version):
+    with pytest.raises(ValidationError, match="only OpenAPI 3.0 and 3.1"):
+        OpenAPISpec.model_validate({"openapi": version, "paths": {}})

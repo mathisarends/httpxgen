@@ -32,7 +32,7 @@ def test_main_reports_invalid_documents(tmp_path, monkeypatch, capsys):
         main()
 
     assert exit_info.value.code == 1
-    assert "only OpenAPI 3.x" in capsys.readouterr().err
+    assert "only OpenAPI 3.0 and 3.1" in capsys.readouterr().err
 
 
 def test_main_check_mode_accepts_current_output(tmp_path, monkeypatch, capsys):
