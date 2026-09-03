@@ -49,13 +49,15 @@ Generated 5 file(s) in package src/payments.
 ```python
 import asyncio
 
+import httpx
+
 from payments import ApiError, CardPaymentMethod, CreateChargeRequest, Money, PaymentsClient
 
 
 async def main() -> None:
     async with PaymentsClient(
+        httpx.AsyncClient(headers={"Authorization": "Bearer …"}),
         "https://payments.example.com/api",
-        headers={"Authorization": "Bearer …"},
     ) as client:
         page = await client.list_charges(status="succeeded", page_size=50)
         for charge in page.items:
@@ -105,6 +107,16 @@ asyncio.run(main())
 `operationId` becomes an idiomatic snake_case method, optional query parameters are only sent when set, and the response is validated into a model:
 
 ```python
+class ListChargesParams(BaseModel):
+    status: ChargeStatus | None = None
+    cursor: str | None = None
+    page_size: int | None = None
+
+
+class _HttpMethod(StrEnum):
+    GET = "GET"
+
+
 class PaymentsClient:
     async def list_charges(
         self,
@@ -114,19 +126,16 @@ class PaymentsClient:
         *,
         timeout: float | None = None,
     ) -> ChargePage:
-        path = "/charges"
-        params: dict[str, Any] = {}
-        if status is not None:
-            params["status"] = status
-        if cursor is not None:
-            params["cursor"] = cursor
-        if page_size is not None:
-            params["page_size"] = page_size
+        params = ListChargesParams(
+            status=status,
+            cursor=cursor,
+            page_size=page_size,
+        )
 
         response = await self._client.request(
-            "GET",
-            f"{self._base_url}{path}",
-            params=params,
+            method=_HttpMethod.GET,
+            url=f"{self._base_url}/charges",
+            params=params.model_dump(mode="json", by_alias=True, exclude_none=True),
             headers=self._headers,
             timeout=self._timeout if timeout is None else timeout,
         )
@@ -146,7 +155,11 @@ Path parameters carry their spec format — `format: uuid` becomes `UUID`, not `
         *,
         timeout: float | None = None,
     ) -> Customer:
-        path = f"/customers/{customer_id}"
+        response = await self._client.request(
+            method=_HttpMethod.GET,
+            url=f"{self._base_url}/customers/{customer_id}",
+            ...
+        )
         ...
 ```
 
@@ -159,14 +172,8 @@ Request bodies are a single typed `body` argument, serialized by alias and witho
         *,
         timeout: float | None = None,
     ) -> Charge:
-        path = "/charges"
-
-        json_body = (
-            TypeAdapter(CreateChargeRequest).dump_python(
-                body, mode="json", by_alias=True, exclude_none=True
-            )
-            if body is not None
-            else None
+        json_body = TypeAdapter(CreateChargeRequest).dump_python(
+            body, mode="json", by_alias=True, exclude_none=True
         )
         ...
 ```
@@ -174,7 +181,11 @@ Request bodies are a single typed `body` argument, serialized by alias and witho
 The client is an async context manager, so `httpx` connections are closed for you:
 
 ```python
-async with PaymentsClient("https://payments.example.com/api") as client:
+http_client = httpx.AsyncClient()
+async with PaymentsClient(
+    http_client,
+    "https://payments.example.com/api",
+) as client:
     ...
 ```
 
