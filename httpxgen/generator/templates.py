@@ -27,12 +27,20 @@ _GENERATED_HEADER_TEMPLATE = """\
 
 _EXCEPTIONS = '''\
 class ApiError(Exception):
-    """Raised when a request completes with an unexpected status code."""
+    """Raised for a documented error response or an unexpected status code."""
 
-    def __init__(self, status_code: int, body: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        body: str,
+        parsed_body: object | None = None,
+        response: object | None = None,
+    ) -> None:
         super().__init__(f"HTTP {status_code}: {body}")
         self.status_code = status_code
         self.body = body
+        self.parsed_body = parsed_body
+        self.response = response
 '''
 
 _ENUM = """\
@@ -42,10 +50,8 @@ class {{ name }}(StrEnum):
 
 _MODEL = """\
 class {{ name }}({{ base }}):
-{% if forbid_extra %}
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="{{ extra_mode }}", populate_by_name=True)
 
-{% endif %}
 {% for field in fields %}
     {{ field }}
 {% endfor %}
@@ -55,6 +61,8 @@ class {{ name }}({{ base }}):
 """
 
 _MODELS = """\
+from __future__ import annotations
+
 {{ imports }}
 
 
@@ -89,11 +97,13 @@ class {{ client_name }}:
         base_url: str,
         *,
         headers: Mapping[str, str] | None = None,
+        credentials: Mapping[str, str | tuple[str, str]] | None = None,
         timeout: float = 30.0,
     ) -> None:
         self._client = client
         self._base_url = base_url.rstrip("/")
         self._headers = dict(headers) if headers else {}
+        self._credentials = dict(credentials) if credentials else {}
         self._timeout = timeout
 
     async def aclose(self) -> None:
@@ -114,13 +124,13 @@ _OPERATION = """\
 {{ signature }}        *,
         timeout: float | None = None,
     ) -> {{ return_annotation }}:
-{{ query_assignment }}{{ header_mapping }}{{ body_assignment }}
+{{ assignments }}
         response = await self._client.request(
             {{ request_arguments }},
         )
 
 {{ response_handling }}
-        raise ApiError(response.status_code, response.text)
+        raise ApiError(response.status_code, response.text, response=response)
 """
 
 _TEMPLATES: dict[TemplateName, str] = {

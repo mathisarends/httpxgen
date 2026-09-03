@@ -7,11 +7,17 @@ from httpxgen.generator.naming import class_name, string_literal
 
 def schema_type(schema: Mapping[str, Any]) -> str:
     if "$ref" in schema:
-        return class_name(schema["$ref"].rsplit("/", 1)[-1])
+        annotation = class_name(
+            schema["$ref"].rsplit("/", 1)[-1].replace("~1", "/").replace("~0", "~")
+        )
+        return f"{annotation} | None" if schema.get("nullable") is True else annotation
 
     variants = schema.get("oneOf") or schema.get("anyOf")
     if variants:
-        return " | ".join(schema_type(item) for item in variants)
+        annotation = " | ".join(schema_type(item) for item in variants)
+        if schema.get("nullable") is True and "None" not in annotation:
+            annotation += " | None"
+        return annotation
     if "const" in schema:
         return f"Literal[{_literal(schema['const'])}]"
     if (enum := schema.get("enum")) is not None:
@@ -21,7 +27,9 @@ def schema_type(schema: Mapping[str, Any]) -> str:
     nullable = schema.get("nullable") is True
     if isinstance(raw_type, list):
         nullable = nullable or "null" in raw_type
-        raw_type = next((item for item in raw_type if item != "null"), None)
+        types = [item for item in raw_type if item != "null"]
+        annotation = " | ".join(_plain_type(item, schema) for item in types) or "None"
+        return f"{annotation} | None" if nullable and annotation != "None" else annotation
 
     annotation = _plain_type(raw_type, schema)
     return f"{annotation} | None" if nullable and annotation != "None" else annotation
@@ -105,6 +113,8 @@ def _string_type(schema: Mapping[str, Any]) -> str:
         "date": "date",
         "date-time": "datetime",
         "uuid": "UUID",
+        "binary": "bytes",
+        "byte": "bytes",
     }.get(schema.get("format"), "str")
 
 

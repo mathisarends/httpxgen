@@ -11,13 +11,13 @@ from httpxgen.generator.naming import (
     used_names,
 )
 from httpxgen.generator.operations import (
+    NO_DEFAULT,
     Operation,
     Parameter,
     query_model_name,
     query_parameters,
 )
 from httpxgen.generator.schema import (
-    allows_none,
     is_object,
     ordered_schemas,
     schema_type,
@@ -80,13 +80,18 @@ def _render_query_model(operation: Operation) -> str:
 
 
 def _render_query_field(parameter: Parameter) -> str:
-    if parameter.name == parameter.wire_name:
-        default = "" if parameter.required else " = None"
-        return f"{parameter.name}: {parameter.annotation}{default}"
-
-    arguments = [f"serialization_alias={string_literal(parameter.wire_name)}"]
-    if not parameter.required:
-        arguments.insert(0, "None")
+    has_default = parameter.default is not NO_DEFAULT
+    default_source = (
+        repr(parameter.default) if has_default else None if parameter.required else "None"
+    )
+    arguments = [f"{name}={value!r}" for name, value in parameter.constraints]
+    if parameter.name != parameter.wire_name:
+        arguments.append(f"serialization_alias={string_literal(parameter.wire_name)}")
+    if not arguments:
+        suffix = "" if default_source is None else f" = {default_source}"
+        return f"{parameter.name}: {parameter.annotation}{suffix}"
+    if default_source is not None:
+        arguments.insert(0, default_source)
     return f"{parameter.name}: {parameter.annotation} = Field({', '.join(arguments)})"
 
 
@@ -254,7 +259,9 @@ def _render_component(
         TemplateName.MODEL,
         name=component_class_name,
         base=base,
-        forbid_extra=own_schema.get("additionalProperties") is False,
+        extra_mode=(
+            "forbid" if own_schema.get("additionalProperties") is False else "allow"
+        ),
         fields=fields,
     ).rstrip("\n")
 
@@ -272,9 +279,6 @@ def _render_field(
         if discriminator_enum
         else schema_type(schema)
     )
-    if not required and "default" not in schema and not allows_none(schema):
-        annotation = f"{annotation} | None"
-
     field_args: list[str] = []
     if field_name != wire_name:
         field_args.append(f"alias={string_literal(wire_name)}")
@@ -283,6 +287,7 @@ def _render_field(
         "maximum": "le",
         "exclusiveMinimum": "gt",
         "exclusiveMaximum": "lt",
+        "multipleOf": "multiple_of",
         "minLength": "min_length",
         "maxLength": "max_length",
         "minItems": "min_length",
@@ -290,7 +295,7 @@ def _render_field(
         "pattern": "pattern",
     }
     for openapi_name, pydantic_name in constraints.items():
-        if openapi_name in schema:
+        if openapi_name in schema and not isinstance(schema[openapi_name], bool):
             field_args.append(f"{pydantic_name}={schema[openapi_name]!r}")
 
     default = schema.get("default", _MISSING)

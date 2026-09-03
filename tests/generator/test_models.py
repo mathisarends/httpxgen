@@ -33,7 +33,7 @@ def test_render_models_generates_enums_aliases_and_constrained_models():
     assert "Identifier = str" in source
     assert "class Charge(BaseModel):" in source
     assert 'charge_id: str = Field(alias="charge-id", min_length=1)' in source
-    assert "status: Status | None = None" in source
+    assert "status: Status = None" in source
 
 
 def test_render_models_rejects_non_string_component_enums():

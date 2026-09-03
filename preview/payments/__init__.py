@@ -7,6 +7,7 @@ from .client import PaymentsClient
 from .exceptions import ApiError
 from .models import (
     Address,
+    ApiErrorModel,
     BankTransferPaymentMethod,
     BaseEntity,
     CardPaymentMethod,
@@ -20,8 +21,8 @@ from .models import (
     ChargeStatus,
     CreateChargeRequest,
     Customer,
+    CustomerPart2BillingProfile,
     Money,
-    PaymentApiError,
     PaymentMethod,
     PaymentMethodType,
 )
@@ -29,6 +30,7 @@ from .models import (
 __all__ = [
     "Address",
     "ApiError",
+    "ApiErrorModel",
     "BankTransferPaymentMethod",
     "BaseEntity",
     "CardPaymentMethod",
@@ -42,8 +44,8 @@ __all__ = [
     "ChargeStatus",
     "CreateChargeRequest",
     "Customer",
+    "CustomerPart2BillingProfile",
     "Money",
-    "PaymentApiError",
     "PaymentMethod",
     "PaymentMethodType",
     "PaymentsClient",

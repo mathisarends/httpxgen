@@ -1,7 +1,7 @@
 import pytest
 
 from httpxgen.generator import GenerationError
-from httpxgen.generator.operations import read_operations
+from httpxgen.generator.operations import NO_DEFAULT, read_operations
 from httpxgen.openapi import HttpMethod, OpenAPISpec
 
 
@@ -53,7 +53,8 @@ def test_read_operations_builds_the_generation_model():
         ("trace_id", False),
     ]
     assert [(item.status, item.model_annotation) for item in operation.responses] == [
-        (201, "Charge")
+        (201, "Charge"),
+        (400, None),
     ]
 
 
@@ -67,19 +68,11 @@ def test_read_operations_builds_the_generation_model():
                 "requestBody": {"content": {"image/png": {"schema": {}}}},
                 "responses": {"204": {}},
             },
-            "application/json",
-        ),
-        (
-            {
-                "operationId": "streamCharges",
-                "parameters": [{"name": "cursor", "in": "cookie"}],
-                "responses": {"204": {}},
-            },
-            "unsupported parameter location",
+            "unsupported request body",
         ),
         (
             {"operationId": "createCharge", "responses": {"400": {}}},
-            "no explicit 2xx response",
+            "no 2xx response",
         ),
     ],
 )
@@ -103,17 +96,114 @@ def test_read_operations_rejects_duplicate_python_identifiers():
         read_operations(spec)
 
 
+def test_parameters_override_components_and_response_ranges_are_read():
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {
+                "/items/{itemId}": {
+                    "parameters": [
+                        {"$ref": "#/components/parameters/ItemId"},
+                        {
+                            "name": "limit",
+                            "in": "query",
+                            "schema": {"type": "integer"},
+                        },
+                    ],
+                    "get": {
+                        "operationId": "getItem",
+                        "parameters": [
+                            {
+                                "name": "limit",
+                                "in": "query",
+                                "schema": {"type": "integer", "default": 20},
+                            },
+                            {
+                                "name": "session",
+                                "in": "cookie",
+                                "schema": {"type": "string"},
+                            },
+                        ],
+                        "responses": {
+                            "2XX": {
+                                "content": {
+                                    "application/problem+json": {
+                                        "schema": {"type": "object"}
+                                    }
+                                }
+                            },
+                            "default": {
+                                "content": {
+                                    "text/plain": {"schema": {"type": "string"}}
+                                }
+                            },
+                        },
+                    },
+                }
+            },
+            "components": {
+                "parameters": {
+                    "ItemId": {
+                        "name": "itemId",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                }
+            },
+        }
+    )
+
+    operation = read_operations(spec)[0]
+
+    assert [(item.wire_name, item.default) for item in operation.parameters][:2] == [
+        ("itemId", NO_DEFAULT),
+        ("limit", 20),
+    ]
+    assert operation.parameters[2].location == "cookie"
+    assert [(item.status, item.success, item.kind) for item in operation.responses] == [
+        ("2XX", True, "json"),
+        ("DEFAULT", False, "text"),
+    ]
+
+
+def test_security_is_inherited_and_can_be_disabled_per_operation():
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "security": [{"bearerAuth": []}],
+            "paths": {
+                "/private": {"get": _empty_operation("private")},
+                "/public": {
+                    "get": {**_empty_operation("public"), "security": []}
+                },
+            },
+            "components": {
+                "securitySchemes": {
+                    "bearerAuth": {"type": "http", "scheme": "bearer"}
+                }
+            },
+        }
+    )
+
+    operations = {item.name: item for item in read_operations(spec)}
+
+    assert operations["private"].security == (("bearerAuth",),)
+    assert operations["public"].security == ()
+
+
 def _spec_with_operation(
     operation,
     *,
     path_parameters=(),
     schemas=None,
 ):
+    path = "/accounts/{accountId}/charges" if path_parameters else "/charges"
     return OpenAPISpec.model_validate(
         {
             "openapi": "3.1.0",
             "paths": {
-                "/accounts/{accountId}/charges": {
+                path: {
                     "parameters": path_parameters,
                     "post": operation,
                 }

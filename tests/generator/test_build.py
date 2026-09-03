@@ -19,15 +19,15 @@ def test_generate_client_produces_a_complete_package(generatable_spec):
     assert files["py.typed"] == ""
 
 
-def test_generate_client_rejects_non_json_request_bodies(reference_spec):
-    reference_spec.components.schemas.pop("ApiError")
+def test_generate_client_supports_binary_request_bodies(reference_spec):
+    files = generate_client(reference_spec, "payments")
 
-    with pytest.raises(GenerationError, match="application/json"):
-        generate_client(reference_spec, "payments")
+    assert "body: bytes" in files["client.py"]
+    assert "body_arguments['content'] = body" in files["client.py"]
 
 
-def test_generate_client_rejects_model_names_reserved_by_the_package(reference_spec):
-    del reference_spec.paths["/customers/{customerId}/avatar"]
+def test_generate_client_renames_an_api_error_schema(reference_spec):
+    files = generate_client(reference_spec, "payments")
 
-    with pytest.raises(GenerationError, match="ApiError"):
-        generate_client(reference_spec, "payments")
+    assert "class ApiErrorModel(BaseModel):" in files["models.py"]
+    assert "ApiErrorModel.model_validate" in files["client.py"]

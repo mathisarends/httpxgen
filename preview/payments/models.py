@@ -3,12 +3,14 @@
 # ============================================================================
 
 
+from __future__ import annotations
+
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PaymentMethodType(StrEnum):
@@ -22,29 +24,45 @@ class ChargeEventType(StrEnum):
 
 
 class Address(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
     street: str
     city: str
-    postal_code: str | None = None
+    postal_code: str = None
     country: str = Field(min_length=2, max_length=2)
 
 
+class ApiErrorModel(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    code: str
+    message: str
+    details: dict[str, Any] = None
+
+
 class BankTransferPaymentMethod(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
     type: Literal[PaymentMethodType.BANK_TRANSFER]
     iban: str
     account_holder: str
 
 
 class BaseEntity(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
     id: str
     created_at: datetime
 
 
 class CardPaymentMethod(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
     type: Literal[PaymentMethodType.CARD]
     card_number: str
     exp_month: int = Field(ge=1, le=12)
     exp_year: int
-    billing_address: Address | None = None
+    billing_address: Address = None
 
 
 class ChargeStatus(StrEnum):
@@ -55,6 +73,8 @@ class ChargeStatus(StrEnum):
 
 
 class Money(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
     amount_cents: int
     currency: str = Field(min_length=3, max_length=3)
 
@@ -66,26 +86,34 @@ PaymentMethod = Annotated[
 
 
 class Charge(BaseEntity):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
     amount: Money
     status: ChargeStatus
     payment_method: PaymentMethod
-    refunded_amount: Money = None
-    metadata: dict[str, str] | None = None
+    refunded_amount: Money | None = None
+    metadata: dict[str, str] = None
 
 
 class ChargeCreatedEvent(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
     type: Literal[ChargeEventType.CHARGE_CREATED]
     occurred_at: datetime
     charge: Charge
 
 
 class ChargeError(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
     code: Literal["card_declined", "insufficient_funds", "invalid_iban"]
     message: str
     charge: Charge | None = None
 
 
 class ChargeRefundedEvent(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
     type: Literal[ChargeEventType.CHARGE_REFUNDED]
     occurred_at: datetime
     amount: Money
@@ -99,31 +127,39 @@ ChargeEvent = Annotated[
 
 
 class ChargePage(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
     items: list[Charge]
     next_cursor: str | None
 
 
 class CreateChargeRequest(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
     amount: Money
     payment_method: PaymentMethod
-    customer_id: UUID | None = None
-    metadata: dict[str, str] | None = None
-    idempotency_key: UUID | None = None
+    customer_id: UUID = None
+    metadata: dict[str, str] = None
+    idempotency_key: UUID = None
+
+
+class CustomerPart2BillingProfile(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    address: Address
+    default_payment_method: PaymentMethod | None = None
+    saved_payment_methods: list[PaymentMethod] = None
 
 
 class Customer(BaseEntity):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
     email: str
-    billing_profile: dict[str, Any]
-    metadata: dict[str, str] | None = None
-
-
-class PaymentApiError(BaseModel):
-    code: str
-    message: str
-    details: dict[str, Any] | None = None
+    billing_profile: CustomerPart2BillingProfile
+    metadata: dict[str, str] = None
 
 
 class ListChargesParams(BaseModel):
     status: ChargeStatus | None = None
     cursor: str | None = None
-    page_size: int | None = None
+    page_size: int = Field(25, ge=1, le=200)

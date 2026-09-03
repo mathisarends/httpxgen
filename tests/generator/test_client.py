@@ -41,13 +41,11 @@ def test_render_client_renders_parameters_and_response_branches():
     assert "params = GetChargeParams(" in source
     assert "status=status," in source
     assert "page_size=page_size," in source
-    assert 'f"{self._base_url}/charges/{charge_id}"' in source
+    assert "path.replace('{chargeId}', _serialize_path(" in source
+    assert 'url=f"{self._base_url}{path}"' in source
     assert "method=_HttpMethod.GET" in source
-    assert (
-        'params=params.model_dump(mode="json", by_alias=True, exclude_none=True)'
-        in source
-    )
-    assert 'headers["trace-id"] = trace_id' in source
+    assert "query.extend(_serialize_query('status'" in source
+    assert "headers['trace-id'] = _serialize_simple(trace_id" in source
     assert "if response.status_code == 200:" in source
     assert "return Charge.model_validate(response.json())" in source
     assert "if response.status_code == 204:" in source
@@ -77,7 +75,7 @@ def test_render_client_does_not_create_params_for_an_operation_without_queries()
     assert "CreateChargeParams" not in source
     assert "params=" not in source
     assert "if body is not None" not in source
-    assert "json_body = TypeAdapter(CreateChargeRequest).dump_python(" in source
+    assert "body_arguments['json'] = TypeAdapter(CreateChargeRequest).dump_python(" in source
 
 
 def test_render_client_guards_optional_request_body_serialization():
@@ -101,4 +99,4 @@ def test_render_client_guards_optional_request_body_serialization():
     )
 
     assert "if body is not None" in source
-    assert "else None" in source
+    assert "body_arguments: dict[str, Any] = {}" in source

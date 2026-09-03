@@ -1,0 +1,132 @@
+import asyncio
+import importlib
+import sys
+
+import httpx
+
+from httpxgen import OpenAPISpec, write_client
+
+
+def test_generated_client_serializes_parameters_security_and_typed_errors(tmp_path):
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "security": [{"bearerAuth": []}],
+            "paths": {
+                "/items/{itemId}": {
+                    "get": {
+                        "operationId": "getItem",
+                        "parameters": [
+                            {
+                                "name": "itemId",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            },
+                            {
+                                "name": "tag",
+                                "in": "query",
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                            },
+                            {
+                                "name": "filter",
+                                "in": "query",
+                                "style": "deepObject",
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"state": {"type": "string"}},
+                                },
+                            },
+                        ],
+                        "responses": {
+                            "200": {
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "required": ["id"],
+                                            "properties": {
+                                                "id": {"type": "string"}
+                                            },
+                                        }
+                                    }
+                                }
+                            },
+                            "404": {
+                                "content": {
+                                    "application/problem+json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "required": ["message"],
+                                            "properties": {
+                                                "message": {"type": "string"}
+                                            },
+                                        }
+                                    }
+                                }
+                            },
+                        },
+                    }
+                }
+            },
+            "components": {
+                "securitySchemes": {
+                    "bearerAuth": {"type": "http", "scheme": "bearer"}
+                }
+            },
+        }
+    )
+    package_dir = tmp_path / "ordinary_api"
+    write_client(spec=spec, package_dir=package_dir, package_name="ordinary_api")
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        assert request.url.path == "/items/a/b"
+        assert request.url.raw_path.startswith(b"/items/a%2Fb")
+        assert request.url.params.get_list("tag") == ["one", "two"]
+        assert request.url.params["filter[state]"] == "active"
+        assert request.headers["Authorization"] == "Bearer secret"
+        if len(seen) == 1:
+            return httpx.Response(200, json={"id": "a/b", "new_field": 1})
+        return httpx.Response(404, json={"message": "gone"})
+
+    sys.path.insert(0, str(tmp_path))
+    try:
+        package = importlib.import_module("ordinary_api")
+        http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = package.OrdinaryApiClient(
+            http_client,
+            "https://example.test",
+            credentials={"bearerAuth": "secret"},
+        )
+
+        async def exercise():
+            item = await client.get_item(
+                "a/b", tag=["one", "two"], filter={"state": "active"}
+            )
+            assert item.id == "a/b"
+            assert item.new_field == 1
+            try:
+                await client.get_item(
+                    "a/b", tag=["one", "two"], filter={"state": "active"}
+                )
+            except package.ApiError as error:
+                assert error.status_code == 404
+                assert error.parsed_body.message == "gone"
+            else:
+                raise AssertionError("expected ApiError")
+            await client.aclose()
+
+        asyncio.run(exercise())
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in [
+            name
+            for name in sys.modules
+            if name == "ordinary_api" or name.startswith("ordinary_api.")
+        ]:
+            del sys.modules[name]

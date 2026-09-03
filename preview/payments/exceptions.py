@@ -4,9 +4,17 @@
 
 
 class ApiError(Exception):
-    """Raised when a request completes with an unexpected status code."""
+    """Raised for a documented error response or an unexpected status code."""
 
-    def __init__(self, status_code: int, body: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        body: str,
+        parsed_body: object | None = None,
+        response: object | None = None,
+    ) -> None:
         super().__init__(f"HTTP {status_code}: {body}")
         self.status_code = status_code
         self.body = body
+        self.parsed_body = parsed_body
+        self.response = response

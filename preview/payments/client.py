@@ -4,8 +4,9 @@
 
 
 from collections.abc import Mapping
-from enum import StrEnum
-from typing import Self
+from enum import Enum, StrEnum
+from urllib.parse import quote
+from typing import Any, Self
 from uuid import UUID
 
 import httpx
@@ -13,7 +14,9 @@ from pydantic import TypeAdapter
 
 from .exceptions import ApiError
 from .models import (
+    ApiErrorModel,
     Charge,
+    ChargeError,
     ChargeEvent,
     ChargePage,
     ChargeStatus,
@@ -27,6 +30,99 @@ from .models import (
 class _HttpMethod(StrEnum):
     GET = "GET"
     POST = "POST"
+    PUT = "PUT"
+
+
+def _scalar(value: Any) -> str:
+    if isinstance(value, Enum):
+        value = value.value
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _serialize_simple(value: Any, explode: bool) -> str:
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(mode="json", by_alias=True, exclude_none=True)
+    if isinstance(value, Mapping):
+        if explode:
+            return ",".join(f"{_scalar(key)}={_scalar(item)}" for key, item in value.items())
+        return ",".join(_scalar(item) for pair in value.items() for item in pair)
+    if isinstance(value, (list, tuple)):
+        return ",".join(_scalar(item) for item in value)
+    return _scalar(value)
+
+
+def _serialize_query(
+    name: str, value: Any, style: str, explode: bool
+) -> list[tuple[str, str]]:
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(mode="json", by_alias=True, exclude_none=True)
+    if style == "deepObject" and isinstance(value, Mapping):
+        return [(f"{name}[{key}]", _scalar(item)) for key, item in value.items()]
+    if isinstance(value, Mapping) and style == "form" and explode:
+        return [(_scalar(key), _scalar(item)) for key, item in value.items()]
+    if isinstance(value, (list, tuple)) and style == "form" and explode:
+        return [(name, _scalar(item)) for item in value]
+    delimiter = " " if style == "spaceDelimited" else "|" if style == "pipeDelimited" else ","
+    if isinstance(value, Mapping):
+        rendered = delimiter.join(_scalar(item) for pair in value.items() for item in pair)
+    elif isinstance(value, (list, tuple)):
+        rendered = delimiter.join(_scalar(item) for item in value)
+    else:
+        rendered = _scalar(value)
+    return [(name, rendered)]
+
+
+def _serialize_path(
+    name: str, value: Any, style: str, explode: bool, allow_reserved: bool
+) -> str:
+    rendered = _serialize_simple(value, explode)
+    safe = ":/?#[]@!$&'()*+,;=" if allow_reserved else ""
+    rendered = quote(rendered, safe=safe)
+    if style == "label":
+        return f".{rendered}"
+    if style == "matrix":
+        return f";{name}={rendered}"
+    return rendered
+
+
+_SECURITY_SCHEMES = {'bearerAuth': ('bearer', 'header', 'Authorization', 'Bearer')}
+
+def _apply_security(
+    credentials: Mapping[str, str | tuple[str, str]],
+    requirements: tuple[tuple[str, ...], ...],
+    headers: dict[str, str],
+    query: list[tuple[str, str]],
+    cookies: dict[str, str],
+) -> None:
+    selected = next(
+        (requirement for requirement in requirements if all(name in credentials for name in requirement)),
+        None,
+    )
+    if selected is None:
+        choices = " or ".join(" + ".join(item) for item in requirements)
+        raise ValueError(f"missing credentials for {choices}")
+    for name in selected:
+        kind, location, parameter_name, prefix = _SECURITY_SCHEMES[name]
+        credential = credentials[name]
+        if kind == "basic":
+            if not isinstance(credential, tuple):
+                raise TypeError(f"credential {name!r} must be a (username, password) tuple")
+            raw = f"{credential[0]}:{credential[1]}".encode()
+            value = f"Basic {b64encode(raw).decode()}"
+        else:
+            if not isinstance(credential, str):
+                raise TypeError(f"credential {name!r} must be a string")
+            value = f"{prefix} {credential}" if prefix else credential
+        if location == "header":
+            headers[parameter_name] = value
+        elif location == "query":
+            query.append((parameter_name, value))
+        else:
+            cookies[parameter_name] = value
 
 
 class PaymentsClient:
@@ -36,11 +132,13 @@ class PaymentsClient:
         base_url: str,
         *,
         headers: Mapping[str, str] | None = None,
+        credentials: Mapping[str, str | tuple[str, str]] | None = None,
         timeout: float = 30.0,
     ) -> None:
         self._client = client
         self._base_url = base_url.rstrip("/")
         self._headers = dict(headers) if headers else {}
+        self._credentials = dict(credentials) if credentials else {}
         self._timeout = timeout
 
     async def aclose(self) -> None:
@@ -56,28 +154,42 @@ class PaymentsClient:
         self,
         status: ChargeStatus | None = None,
         cursor: str | None = None,
-        page_size: int | None = None,
+        page_size: int = 25,
         *,
         timeout: float | None = None,
     ) -> ChargePage:
+        path = '/charges'
+        query: list[tuple[str, str]] = []
+        headers = dict(self._headers)
+        cookies: dict[str, str] = {}
         params = ListChargesParams(
             status=status,
             cursor=cursor,
             page_size=page_size,
         )
+        if params.status is not None:
+            query.extend(_serialize_query('status', params.status, 'form', True))
+        if params.cursor is not None:
+            query.extend(_serialize_query('cursor', params.cursor, 'form', True))
+        query.extend(_serialize_query('page_size', params.page_size, 'form', True))
+
+        _apply_security(
+            self._credentials, (('bearerAuth',),), headers, query, cookies
+        )
+
 
         response = await self._client.request(
             method=_HttpMethod.GET,
-            url=f"{self._base_url}/charges",
-            params=params.model_dump(mode="json", by_alias=True, exclude_none=True),
-            headers=self._headers,
+            url=f"{self._base_url}{path}",
+            params=query,
+            headers=headers,
             timeout=self._timeout if timeout is None else timeout,
         )
 
         if response.status_code == 200:
             return ChargePage.model_validate(response.json())
 
-        raise ApiError(response.status_code, response.text)
+        raise ApiError(response.status_code, response.text, response=response)
 
     async def create_charge(
         self,
@@ -85,22 +197,38 @@ class PaymentsClient:
         *,
         timeout: float | None = None,
     ) -> Charge:
-        json_body = TypeAdapter(CreateChargeRequest).dump_python(
-            body, mode="json", by_alias=True, exclude_none=True
+        path = '/charges'
+        query: list[tuple[str, str]] = []
+        headers = dict(self._headers)
+        cookies: dict[str, str] = {}
+
+        _apply_security(
+            self._credentials, (('bearerAuth',),), headers, query, cookies
         )
+
+        body_arguments: dict[str, Any] = {}
+        body_arguments['json'] = TypeAdapter(CreateChargeRequest).dump_python(
+            body, mode='json', by_alias=True, exclude_none=True
+        )
+
 
         response = await self._client.request(
             method=_HttpMethod.POST,
-            url=f"{self._base_url}/charges",
-            headers=self._headers,
-            json=json_body,
+            url=f"{self._base_url}{path}",
+            params=query,
+            headers=headers,
+            **body_arguments,
             timeout=self._timeout if timeout is None else timeout,
         )
 
         if response.status_code == 201:
             return Charge.model_validate(response.json())
+        if response.status_code == 402:
+            raise ApiError(
+                response.status_code, response.text, ChargeError.model_validate(response.json()), response
+            )
 
-        raise ApiError(response.status_code, response.text)
+        raise ApiError(response.status_code, response.text, response=response)
 
     async def list_charge_events(
         self,
@@ -108,18 +236,29 @@ class PaymentsClient:
         *,
         timeout: float | None = None,
     ) -> list[ChargeEvent]:
+        path = '/charges/{chargeId}/events'
+        query: list[tuple[str, str]] = []
+        headers = dict(self._headers)
+        cookies: dict[str, str] = {}
+        path = path.replace('{chargeId}', _serialize_path('chargeId', charge_id, 'simple', False, False))
+
+        _apply_security(
+            self._credentials, (('bearerAuth',),), headers, query, cookies
+        )
+
 
         response = await self._client.request(
             method=_HttpMethod.GET,
-            url=f"{self._base_url}/charges/{charge_id}/events",
-            headers=self._headers,
+            url=f"{self._base_url}{path}",
+            params=query,
+            headers=headers,
             timeout=self._timeout if timeout is None else timeout,
         )
 
         if response.status_code == 200:
             return TypeAdapter(list[ChargeEvent]).validate_python(response.json())
 
-        raise ApiError(response.status_code, response.text)
+        raise ApiError(response.status_code, response.text, response=response)
 
     async def get_customer(
         self,
@@ -127,18 +266,61 @@ class PaymentsClient:
         *,
         timeout: float | None = None,
     ) -> Customer:
+        path = '/customers/{customerId}'
+        path = path.replace('{customerId}', _serialize_path('customerId', customer_id, 'simple', False, False))
+
 
         response = await self._client.request(
             method=_HttpMethod.GET,
-            url=f"{self._base_url}/customers/{customer_id}",
+            url=f"{self._base_url}{path}",
             headers=self._headers,
             timeout=self._timeout if timeout is None else timeout,
         )
 
         if response.status_code == 200:
             return Customer.model_validate(response.json())
+        if response.status_code == 404:
+            raise ApiError(
+                response.status_code, response.text, ApiErrorModel.model_validate(response.json()), response
+            )
 
-        raise ApiError(response.status_code, response.text)
+        raise ApiError(response.status_code, response.text, response=response)
+
+    async def upload_customer_avatar(
+        self,
+        customer_id: UUID,
+        body: bytes,
+        *,
+        timeout: float | None = None,
+    ) -> None:
+        path = '/customers/{customerId}/avatar'
+        query: list[tuple[str, str]] = []
+        headers = dict(self._headers)
+        cookies: dict[str, str] = {}
+        path = path.replace('{customerId}', _serialize_path('customerId', customer_id, 'simple', False, False))
+
+        _apply_security(
+            self._credentials, (('bearerAuth',),), headers, query, cookies
+        )
+
+        body_arguments: dict[str, Any] = {}
+        body_arguments['content'] = body
+        headers.setdefault('Content-Type', 'image/png')
+
+
+        response = await self._client.request(
+            method=_HttpMethod.PUT,
+            url=f"{self._base_url}{path}",
+            params=query,
+            headers=headers,
+            **body_arguments,
+            timeout=self._timeout if timeout is None else timeout,
+        )
+
+        if response.status_code == 200:
+            return None
+
+        raise ApiError(response.status_code, response.text, response=response)
 
     async def create_payment_method(
         self,
@@ -146,19 +328,31 @@ class PaymentsClient:
         *,
         timeout: float | None = None,
     ) -> PaymentMethod:
-        json_body = TypeAdapter(PaymentMethod).dump_python(
-            body, mode="json", by_alias=True, exclude_none=True
+        path = '/payment-methods'
+        query: list[tuple[str, str]] = []
+        headers = dict(self._headers)
+        cookies: dict[str, str] = {}
+
+        _apply_security(
+            self._credentials, (('bearerAuth',),), headers, query, cookies
         )
+
+        body_arguments: dict[str, Any] = {}
+        body_arguments['json'] = TypeAdapter(PaymentMethod).dump_python(
+            body, mode='json', by_alias=True, exclude_none=True
+        )
+
 
         response = await self._client.request(
             method=_HttpMethod.POST,
-            url=f"{self._base_url}/payment-methods",
-            headers=self._headers,
-            json=json_body,
+            url=f"{self._base_url}{path}",
+            params=query,
+            headers=headers,
+            **body_arguments,
             timeout=self._timeout if timeout is None else timeout,
         )
 
         if response.status_code == 201:
             return TypeAdapter(PaymentMethod).validate_python(response.json())
 
-        raise ApiError(response.status_code, response.text)
+        raise ApiError(response.status_code, response.text, response=response)
