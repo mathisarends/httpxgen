@@ -1,0 +1,248 @@
+openapi: 3.1.0
+info:
+  title: Payments API
+  description: OpenAPI 3.1 spec with discriminated unions (oneOf), API-key auth, webhooks, and deep nesting — stress-tests polymorphic model generation.
+  version: "1.3.0"
+
+servers:
+  - url: https://payments.example.com/api
+
+security:
+  - apiKeyAuth: []
+
+paths:
+  /payment-methods:
+    post:
+      operationId: createPaymentMethod
+      summary: Create a payment method (card or bank transfer)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentMethod"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentMethod"
+
+  /charges:
+    post:
+      operationId: createCharge
+      summary: Create a charge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChargeRequest"
+      responses:
+        "201":
+          description: Charge created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charge"
+        "402":
+          description: Payment required / declined
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChargeError"
+    get:
+      operationId: listCharges
+      summary: List charges
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ChargeStatus"
+        - name: created_after
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Charges
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Charge"
+
+  /charges/{chargeId}/refund:
+    post:
+      operationId: refundCharge
+      parameters:
+        - name: chargeId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount_cents:
+                  type: integer
+                  minimum: 1
+                reason:
+                  type: string
+                  enum: [duplicate, fraudulent, requested_by_customer]
+      responses:
+        "200":
+          description: Refunded charge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charge"
+
+webhooks:
+  chargeSucceeded:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Charge"
+      responses:
+        "200":
+          description: Webhook received
+
+components:
+  securitySchemes:
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+
+  schemas:
+    ChargeStatus:
+      type: string
+      enum: [pending, succeeded, failed, refunded]
+
+    CardPaymentMethod:
+      type: object
+      required:
+        - type
+        - card_number
+        - exp_month
+        - exp_year
+      properties:
+        type:
+          type: string
+          const: card
+        card_number:
+          type: string
+        exp_month:
+          type: integer
+          minimum: 1
+          maximum: 12
+        exp_year:
+          type: integer
+        cvc:
+          type: string
+
+    BankTransferPaymentMethod:
+      type: object
+      required:
+        - type
+        - iban
+        - account_holder
+      properties:
+        type:
+          type: string
+          const: bank_transfer
+        iban:
+          type: string
+        account_holder:
+          type: string
+
+    PaymentMethod:
+      oneOf:
+        - $ref: "#/components/schemas/CardPaymentMethod"
+        - $ref: "#/components/schemas/BankTransferPaymentMethod"
+      discriminator:
+        propertyName: type
+        mapping:
+          card: "#/components/schemas/CardPaymentMethod"
+          bank_transfer: "#/components/schemas/BankTransferPaymentMethod"
+
+    Money:
+      type: object
+      required:
+        - amount_cents
+        - currency
+      properties:
+        amount_cents:
+          type: integer
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+
+    CreateChargeRequest:
+      type: object
+      required:
+        - amount
+        - payment_method
+      properties:
+        amount:
+          $ref: "#/components/schemas/Money"
+        payment_method:
+          $ref: "#/components/schemas/PaymentMethod"
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        idempotency_key:
+          type: string
+          format: uuid
+
+    Charge:
+      type: object
+      required:
+        - id
+        - amount
+        - status
+        - payment_method
+        - created_at
+      properties:
+        id:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Money"
+        status:
+          $ref: "#/components/schemas/ChargeStatus"
+        payment_method:
+          $ref: "#/components/schemas/PaymentMethod"
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ChargeError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          enum: [card_declined, insufficient_funds, invalid_iban]
+        message:
+          type: string
+        charge:
+          anyOf:
+            - $ref: "#/components/schemas/Charge"
+            - type: "null"
