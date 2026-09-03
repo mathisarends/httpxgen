@@ -74,6 +74,7 @@ def allows_none(schema: Mapping[str, Any]) -> bool:
     raw_type = schema.get("type")
     return (
         schema.get("nullable") is True
+        or raw_type == "null"
         or (isinstance(raw_type, list) and "null" in raw_type)
         or any(
             allows_none(variant)
