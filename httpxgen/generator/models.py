@@ -1,11 +1,22 @@
-import json
-import keyword
-import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from httpxgen.generator.errors import GenerationError
+from httpxgen.generator.naming import (
+    class_name,
+    enum_member,
+    identifier,
+    string_literal,
+    used_names,
+)
+from httpxgen.generator.schema import (
+    allows_none,
+    is_object,
+    ordered_schemas,
+    schema_type,
+    split_all_of,
+)
 from httpxgen.generator.templates import TemplateName, render_template
 
 _MISSING = object()
@@ -17,47 +28,8 @@ class _DiscriminatorEnum:
     values: tuple[str, ...]
 
 
-def schema_type(schema: Mapping[str, Any]) -> str:
-    """Translate an OpenAPI schema fragment into a Python annotation."""
-    if "$ref" in schema:
-        return class_name(schema["$ref"].rsplit("/", 1)[-1])
-
-    variants = schema.get("oneOf") or schema.get("anyOf")
-    if variants:
-        result = " | ".join(schema_type(item) for item in variants)
-        return f"({result})"
-
-    if "const" in schema:
-        return f"Literal[{_literal_source(schema['const'])}]"
-
-    enum = schema.get("enum")
-    if enum is not None:
-        return "Literal[" + ", ".join(_literal_source(value) for value in enum) + "]"
-
-    raw_type = schema.get("type")
-    nullable = schema.get("nullable") is True
-    if isinstance(raw_type, list):
-        nullable = nullable or "null" in raw_type
-        raw_type = next((item for item in raw_type if item != "null"), None)
-
-    annotation = _primitive_or_collection_type(raw_type, schema)
-    if nullable and annotation != "None":
-        return f"{annotation} | None"
-    return annotation
-
-
-def to_identifier(value: str) -> str:
-    value = re.sub(r"(?<!^)(?=[A-Z])", "_", value).lower()
-    value = re.sub(r"\W", "_", value)
-    if not value or value[0].isdigit():
-        value = f"value_{value}"
-    if keyword.iskeyword(value):
-        value += "_"
-    return value
-
-
-def generate_models(schemas: Mapping[str, Any]) -> str:
-    discriminator_enums_by_field = discriminator_enums(schemas)
+def render_models(schemas: Mapping[str, Any]) -> str:
+    discriminator_enums_by_field = _discriminator_enums(schemas)
     blocks = [
         *(
             _render_discriminator_enum(enum)
@@ -73,6 +45,16 @@ def generate_models(schemas: Mapping[str, Any]) -> str:
         body = "# This API does not define component schemas."
     imports = _render_model_imports(body)
     return render_template(TemplateName.MODELS, imports=imports, body=body)
+
+
+def exported_model_names(schemas: Mapping[str, Any]) -> list[str]:
+    discriminator_names = [
+        enum.name for enum in dict.fromkeys(_discriminator_enums(schemas).values())
+    ]
+    return [
+        *discriminator_names,
+        *(class_name(name) for name in ordered_schemas(schemas)),
+    ]
 
 
 def _render_model_imports(body: str) -> str:
@@ -95,11 +77,7 @@ def _render_model_imports(body: str) -> str:
     return "\n".join(lines)
 
 
-def used_names(source: str, candidates: Sequence[str]) -> list[str]:
-    return [name for name in candidates if re.search(rf"\b{re.escape(name)}\b", source)]
-
-
-def discriminator_enums(
+def _discriminator_enums(
     schemas: Mapping[str, Any],
 ) -> dict[tuple[str, str], _DiscriminatorEnum]:
     result: dict[tuple[str, str], _DiscriminatorEnum] = {}
@@ -150,7 +128,7 @@ def _discriminator_values(
 
 def _render_discriminator_enum(enum: _DiscriminatorEnum) -> str:
     members = "\n".join(
-        f"    {_enum_member(value)} = {string_literal(value)}" for value in enum.values
+        f"    {enum_member(value)} = {string_literal(value)}" for value in enum.values
     )
     return render_template(TemplateName.ENUM, name=enum.name, members=members).rstrip(
         "\n"
@@ -161,7 +139,7 @@ def _discriminator_annotation(
     schema: Mapping[str, Any], enum: _DiscriminatorEnum
 ) -> str:
     values = [schema["const"]] if "const" in schema else schema.get("enum", [])
-    member_names = [f"{enum.name}.{_enum_member(value)}" for value in values]
+    member_names = [f"{enum.name}.{enum_member(value)}" for value in values]
     members = ", ".join(member_names)
     if len(member_names) == 1:
         return f"Literal[{members}]"
@@ -173,18 +151,10 @@ def _discriminator_annotation(
 
 def _default_source(value: Any, enum: _DiscriminatorEnum | None) -> str:
     if enum is not None and isinstance(value, str) and value in enum.values:
-        return f"{enum.name}.{_enum_member(value)}"
+        return f"{enum.name}.{enum_member(value)}"
     if isinstance(value, str):
         return string_literal(value)
     return repr(value)
-
-
-def string_literal(value: str) -> str:
-    return json.dumps(value, ensure_ascii=False)
-
-
-def _literal_source(value: Any) -> str:
-    return string_literal(value) if isinstance(value, str) else repr(value)
 
 
 def _render_component(
@@ -198,7 +168,7 @@ def _render_component(
         if not all(isinstance(value, str) for value in enum):
             raise GenerationError(f"{name}: only string component enums are supported")
         members = "\n".join(
-            f"    {_enum_member(value)} = {string_literal(value)}" for value in enum
+            f"    {enum_member(value)} = {string_literal(value)}" for value in enum
         )
         return render_template(
             TemplateName.ENUM,
@@ -231,7 +201,7 @@ def _render_component(
         return f"{component_class_name} = {union}"
 
     bases, own_schema = split_all_of(schema)
-    if not is_object_schema(own_schema) and not bases:
+    if not is_object(own_schema) and not bases:
         return f"{component_class_name} = {schema_type(own_schema)}"
 
     base = bases[0] if bases else "BaseModel"
@@ -239,7 +209,7 @@ def _render_component(
     required = set(own_schema.get("required", []))
     fields = [
         _render_field(
-            field_name=to_identifier(wire_name),
+            field_name=identifier(wire_name),
             wire_name=wire_name,
             required=wire_name in required,
             schema=field_schema,
@@ -269,7 +239,7 @@ def _render_field(
         if discriminator_enum
         else schema_type(schema)
     )
-    if not required and "default" not in schema and not _allows_none(schema):
+    if not required and "default" not in schema and not allows_none(schema):
         annotation = f"{annotation} | None"
 
     field_args: list[str] = []
@@ -320,116 +290,3 @@ def _render_field(
     if len(rendered) + 4 <= 88:
         return rendered
     return f"{field_name}: {annotation} = Field(\n        {arguments}\n    )"
-
-
-def split_all_of(
-    schema: Mapping[str, Any],
-) -> tuple[list[str], Mapping[str, Any]]:
-    all_of = schema.get("allOf")
-    if not all_of:
-        return [], schema
-    bases = [schema_type(item) for item in all_of if "$ref" in item]
-    if len(bases) > 1:
-        raise GenerationError("multiple inheritance in allOf is not supported")
-
-    merged: dict[str, Any] = {"type": "object", "properties": {}, "required": []}
-    for item in (item for item in all_of if "$ref" not in item):
-        merged["properties"].update(item.get("properties", {}))
-        merged["required"].extend(item.get("required", []))
-        if item.get("additionalProperties") is False:
-            merged["additionalProperties"] = False
-    return bases, merged
-
-
-def _primitive_or_collection_type(raw_type: Any, schema: Mapping[str, Any]) -> str:
-    if raw_type == "array":
-        return f"list[{schema_type(schema.get('items', {}))}]"
-    if raw_type == "object" or "properties" in schema:
-        additional = schema.get("additionalProperties")
-        value_type = (
-            schema_type(additional) if isinstance(additional, Mapping) else "Any"
-        )
-        return f"dict[str, {value_type}]"
-    if raw_type == "integer":
-        return "int"
-    if raw_type == "number":
-        return "float"
-    if raw_type == "boolean":
-        return "bool"
-    if raw_type == "string":
-        return {
-            "date": "date",
-            "date-time": "datetime",
-            "uuid": "UUID",
-        }.get(schema.get("format"), "str")
-    if raw_type == "null":
-        return "None"
-    return "Any"
-
-
-def ordered_schemas(schemas: Mapping[str, Any]) -> list[str]:
-    """Order dependencies before aliases while remaining stable for model cycles."""
-    result: list[str] = []
-    visited: set[str] = set()
-    visiting: set[str] = set()
-
-    def visit(name: str) -> None:
-        if name in visited or name in visiting:
-            return
-        visiting.add(name)
-        for dependency in sorted(_schema_dependencies(schemas[name])):
-            if dependency in schemas:
-                visit(dependency)
-        visiting.remove(name)
-        visited.add(name)
-        result.append(name)
-
-    for name in sorted(schemas):
-        visit(name)
-    return result
-
-
-def _schema_dependencies(value: Any) -> set[str]:
-    if isinstance(value, Mapping):
-        dependencies = set()
-        reference = value.get("$ref")
-        if isinstance(reference, str):
-            dependencies.add(reference.rsplit("/", 1)[-1])
-        for nested in value.values():
-            dependencies.update(_schema_dependencies(nested))
-        return dependencies
-    if isinstance(value, list):
-        dependencies = set()
-        for nested in value:
-            dependencies.update(_schema_dependencies(nested))
-        return dependencies
-    return set()
-
-
-def is_object_schema(schema: Mapping[str, Any]) -> bool:
-    return schema.get("type") == "object" or "properties" in schema
-
-
-def _allows_none(schema: Mapping[str, Any]) -> bool:
-    raw_type = schema.get("type")
-    return (
-        schema.get("nullable") is True
-        or (isinstance(raw_type, list) and "null" in raw_type)
-        or any(
-            _allows_none(variant)
-            for variant in (schema.get("oneOf") or schema.get("anyOf") or [])
-        )
-    )
-
-
-def class_name(value: str) -> str:
-    words = re.findall(r"[A-Z]+(?=[A-Z][a-z]|$)|[A-Z]?[a-z]+|\d+", value)
-    result = "".join(word[:1].upper() + word[1:] for word in words) or "Model"
-    return f"Model{result}" if result[0].isdigit() else result
-
-
-def _enum_member(value: str) -> str:
-    result = re.sub(r"\W+", "_", value).strip("_").upper() or "EMPTY"
-    if result[0].isdigit():
-        result = f"VALUE_{result}"
-    return result

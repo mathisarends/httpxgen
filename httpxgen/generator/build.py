@@ -1,8 +1,14 @@
-from .client import generate_client_module, read_operations
-from .models import class_name, generate_models
-from .package import generate_package_init
-from .templates import GENERATED_HEADER, TemplateName, render_template
-from ..openapi import OpenAPISpec
+from httpxgen.generator.client import render_client
+from httpxgen.generator.models import render_models
+from httpxgen.generator.naming import class_name
+from httpxgen.generator.operations import read_operations
+from httpxgen.generator.package import render_package_init
+from httpxgen.generator.templates import (
+    GENERATED_HEADER,
+    TemplateName,
+    render_template,
+)
+from httpxgen.openapi import OpenAPISpec
 
 
 def generate_client(spec: OpenAPISpec, package_name: str) -> dict[str, str]:
@@ -12,10 +18,10 @@ def generate_client(spec: OpenAPISpec, package_name: str) -> dict[str, str]:
     operations = read_operations(spec)
 
     managed_files = {
-        "client.py": generate_client_module(operations, schemas, client_name),
-        "models.py": generate_models(schemas),
+        "client.py": render_client(operations, schemas, client_name),
+        "models.py": render_models(schemas),
         "exceptions.py": render_template(TemplateName.EXCEPTIONS),
-        "__init__.py": generate_package_init(schemas, client_name),
+        "__init__.py": render_package_init(schemas, client_name),
     }
     return {
         relative: f"{GENERATED_HEADER}\n\n{content.rstrip()}\n"
