@@ -9,6 +9,7 @@ from httpxgen.openapi import HttpMethod, OpenAPISpec
 def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
     document = spec.model_dump(by_alias=True, exclude_none=True)
     if spec.openapi.startswith("3.0"):
+        _strip_oas30_reference_siblings(document)
         _normalize_oas30_keywords(document)
     components = document.setdefault("components", {})
     schemas: dict[str, dict[str, Any]] = components.setdefault("schemas", {})
@@ -118,6 +119,8 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
                         )
     try:
         _validate_references(document)
+        _validate_schema_semantics(schemas)
+        _validate_all_of_conflicts(schemas)
         return OpenAPISpec.model_validate(document)
     except Exception as error:
         raise GenerationError(f"failed to normalize inline schemas: {error}") from error
@@ -163,7 +166,18 @@ def _normalize_discriminators(schemas: dict[str, dict[str, Any]]) -> None:
                 target = inline_parts[-1]
             properties = target.setdefault("properties", {})
             field = properties.setdefault(property_name, {"type": "string"})
-            if "const" not in field and "enum" not in field:
+            declared_values = (
+                [field["const"]]
+                if "const" in field
+                else field.get("enum")
+                if "enum" in field
+                else None
+            )
+            if declared_values is not None and value not in declared_values:
+                raise GenerationError(
+                    f"discriminator value {value!r} conflicts with {component_name}.{property_name}"
+                )
+            if declared_values is None:
                 field["const"] = value
             required = target.setdefault("required", [])
             if property_name not in required:
@@ -213,3 +227,146 @@ def _normalize_oas30_keywords(value: Any) -> None:
     elif isinstance(value, list):
         for item in value:
             _normalize_oas30_keywords(item)
+
+
+def _strip_oas30_reference_siblings(value: Any) -> None:
+    if isinstance(value, dict):
+        if "$ref" in value:
+            reference = value["$ref"]
+            value.clear()
+            value["$ref"] = reference
+            return
+        for item in value.values():
+            _strip_oas30_reference_siblings(item)
+    elif isinstance(value, list):
+        for item in value:
+            _strip_oas30_reference_siblings(item)
+
+
+def _validate_schema_semantics(schemas: dict[str, dict[str, Any]]) -> None:
+    def resolved(schema: dict[str, Any]) -> dict[str, Any]:
+        reference = schema.get("$ref")
+        if not isinstance(reference, str):
+            return schema
+        prefix = "#/components/schemas/"
+        name = reference.removeprefix(prefix).replace("~1", "/").replace("~0", "~")
+        return {
+            **schemas[name],
+            **{key: item for key, item in schema.items() if key != "$ref"},
+        }
+
+    def visit(schema: Any, location: str, seen: frozenset[str] = frozenset()) -> None:
+        if not isinstance(schema, dict):
+            return
+        reference = schema.get("$ref")
+        if isinstance(reference, str):
+            name = (
+                reference.removeprefix("#/components/schemas/")
+                .replace("~1", "/")
+                .replace("~0", "~")
+            )
+            if name in seen:
+                return
+            seen = seen | {name}
+        effective = resolved(schema)
+        if "default" in effective:
+            _validate_default(effective, location)
+        properties = effective.get("properties", {})
+        if isinstance(properties, dict):
+            for name, child in properties.items():
+                visit(child, f"{location}.{name}", seen)
+        if isinstance(effective.get("items"), dict):
+            visit(effective["items"], f"{location}[]", seen)
+        for keyword in ("oneOf", "anyOf", "allOf"):
+            for index, child in enumerate(effective.get(keyword, []), 1):
+                visit(child, f"{location}.{keyword}[{index}]", seen)
+
+    for name, schema in schemas.items():
+        visit(schema, name)
+
+
+def _validate_default(schema: dict[str, Any], location: str) -> None:
+    default = schema["default"]
+    raw_type = schema.get("type")
+    if default is None and (
+        schema.get("nullable") is True
+        or raw_type == "null"
+        or (isinstance(raw_type, list) and "null" in raw_type)
+    ):
+        return
+    if "const" in schema and default != schema["const"]:
+        raise GenerationError(f"{location}: default does not match const")
+    if "enum" in schema and default not in schema["enum"]:
+        raise GenerationError(f"{location}: default is not an enum value")
+    allowed = set(raw_type) if isinstance(raw_type, list) else {raw_type}
+    checks = {
+        "string": lambda item: isinstance(item, str),
+        "integer": lambda item: isinstance(item, int) and not isinstance(item, bool),
+        "number": lambda item: (
+            isinstance(item, (int, float)) and not isinstance(item, bool)
+        ),
+        "boolean": lambda item: isinstance(item, bool),
+        "array": lambda item: isinstance(item, list),
+        "object": lambda item: isinstance(item, dict),
+        "null": lambda item: item is None,
+    }
+    typed = {item for item in allowed if item in checks}
+    if typed and not any(checks[item](default) for item in typed):
+        raise GenerationError(f"{location}: default does not match schema type")
+
+
+def _validate_all_of_conflicts(schemas: dict[str, dict[str, Any]]) -> None:
+    prefix = "#/components/schemas/"
+
+    def properties(schema: dict[str, Any], seen: set[str]) -> dict[str, dict[str, Any]]:
+        result = dict(schema.get("properties", {}))
+        for item in schema.get("allOf", []):
+            reference = item.get("$ref")
+            if isinstance(reference, str) and reference.startswith(prefix):
+                name = (
+                    reference.removeprefix(prefix).replace("~1", "/").replace("~0", "~")
+                )
+                if name not in seen:
+                    result.update(properties(schemas[name], {*seen, name}))
+            elif isinstance(item, dict):
+                result.update(properties(item, seen))
+        return result
+
+    for name, schema in schemas.items():
+        sources: dict[str, tuple[str, str]] = {}
+        parts = [schema, *schema.get("allOf", [])]
+        for index, part in enumerate(parts):
+            reference = part.get("$ref") if isinstance(part, dict) else None
+            if isinstance(reference, str) and reference.startswith(prefix):
+                target = (
+                    reference.removeprefix(prefix).replace("~1", "/").replace("~0", "~")
+                )
+                part_properties = properties(schemas[target], {target})
+                source = target
+            elif isinstance(part, dict):
+                part_properties = part.get("properties", {})
+                source = f"inline part {index}"
+            else:
+                continue
+            for property_name, property_schema in part_properties.items():
+                signature = _schema_type_signature(property_schema)
+                previous = sources.get(property_name)
+                if previous is not None and previous[0] != signature:
+                    raise GenerationError(
+                        f"{name}: allOf property {property_name!r} conflicts between "
+                        f"{previous[1]} and {source}"
+                    )
+                sources[property_name] = signature, source
+
+
+def _schema_type_signature(schema: dict[str, Any]) -> str:
+    if "$ref" in schema:
+        return schema["$ref"]
+    if "type" in schema:
+        raw = schema["type"]
+        return repr(sorted(raw) if isinstance(raw, list) else raw)
+    if "oneOf" in schema:
+        return "oneOf"
+    if "anyOf" in schema:
+        return "anyOf"
+    return "unknown"

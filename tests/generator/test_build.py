@@ -104,3 +104,44 @@ def test_generate_client_rejects_an_unresolved_schema_reference():
 
     with pytest.raises(GenerationError, match="unresolved reference"):
         generate_client(spec, "broken")
+
+
+def test_generate_client_rejects_generated_namespace_collisions():
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {
+                "/items": {
+                    "get": {
+                        "operationId": "listItems",
+                        "parameters": [
+                            {
+                                "name": "limit",
+                                "in": "query",
+                                "schema": {"type": "integer"},
+                            }
+                        ],
+                        "responses": {"204": {}},
+                    }
+                }
+            },
+            "components": {"schemas": {"ListItemsParams": {"type": "object"}}},
+        }
+    )
+
+    with pytest.raises(GenerationError, match="ListItemsParams"):
+        generate_client(spec, "collision")
+
+
+def test_generate_client_rejects_operation_names_reserved_by_the_client():
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {
+                "/close": {"post": {"operationId": "aclose", "responses": {"204": {}}}}
+            },
+        }
+    )
+
+    with pytest.raises(GenerationError, match="client methods"):
+        generate_client(spec, "collision")

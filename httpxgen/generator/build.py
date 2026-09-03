@@ -3,7 +3,7 @@ from httpxgen.generator.models import render_models
 from httpxgen.generator.naming import class_name
 from httpxgen.generator.normalize import normalize_inline_schemas
 from httpxgen.generator.operations import read_operations
-from httpxgen.generator.package import render_package_init
+from httpxgen.generator.package import render_package_init, validate_package_names
 from httpxgen.generator.templates import (
     GENERATED_HEADER,
     TemplateName,
@@ -18,6 +18,7 @@ def generate_client(spec: OpenAPISpec, package_name: str) -> dict[str, str]:
     schemas = spec.components.schemas
     client_name = f"{class_name(package_name)}Client"
     operations = read_operations(spec)
+    validate_package_names(schemas, operations, client_name)
 
     managed_files = {
         "client.py": render_client(operations, schemas, client_name),

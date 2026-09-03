@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from httpxgen.generator.errors import GenerationError
-from httpxgen.generator.naming import class_name, identifier
+from httpxgen.generator.naming import class_name, enum_member, identifier
 from httpxgen.generator.schema import is_object, schema_type, split_all_of
 from httpxgen.openapi import (
     APIParameter,
@@ -33,6 +33,7 @@ class Parameter:
     allow_reserved: bool = False
     default: Any = NO_DEFAULT
     constraints: tuple[tuple[str, Any], ...] = ()
+    default_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -196,6 +197,7 @@ def _read_parameters(
                 allow_reserved=value.allow_reserved,
                 default=schema.get("default", NO_DEFAULT),
                 constraints=_constraints(schema),
+                default_source=_parameter_default_source(schema, spec),
             )
         )
     return tuple(parameters)
@@ -439,3 +441,18 @@ def _constraints(schema: Mapping[str, Any]) -> tuple[tuple[str, Any], ...]:
         for source, target in names.items()
         if source in schema and not isinstance(schema[source], bool)
     )
+
+
+def _parameter_default_source(
+    schema: Mapping[str, Any], spec: OpenAPISpec
+) -> str | None:
+    if "default" not in schema:
+        return None
+    default = schema["default"]
+    reference = schema.get("$ref")
+    if isinstance(reference, str):
+        name = _reference_name(reference, "schemas")
+        target = spec.components.schemas.get(name, {})
+        if isinstance(default, str) and default in target.get("enum", []):
+            return f"{class_name(name)}.{enum_member(default)}"
+    return repr(default)

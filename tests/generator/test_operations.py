@@ -226,6 +226,39 @@ def test_request_body_and_response_component_references_are_resolved():
     assert operation.responses[0].kind == "text"
 
 
+def test_referenced_enum_defaults_use_enum_members():
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {
+                "/items": {
+                    "get": {
+                        "operationId": "listItems",
+                        "parameters": [
+                            {
+                                "name": "state",
+                                "in": "query",
+                                "schema": {
+                                    "$ref": "#/components/schemas/State",
+                                    "default": "open",
+                                },
+                            }
+                        ],
+                        "responses": {"204": {}},
+                    }
+                }
+            },
+            "components": {
+                "schemas": {"State": {"type": "string", "enum": ["open", "closed"]}}
+            },
+        }
+    )
+
+    parameter = read_operations(spec)[0].parameters[0]
+
+    assert parameter.default_source == "State.OPEN"
+
+
 def _spec_with_operation(
     operation,
     *,

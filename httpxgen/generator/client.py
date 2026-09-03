@@ -192,7 +192,7 @@ def _render_operation(operation: Operation) -> str:
 
 def _parameter_default(parameter: Parameter) -> str:
     if parameter.default is not NO_DEFAULT:
-        return f" = {parameter.default!r}"
+        return f" = {parameter.default_source or repr(parameter.default)}"
     return "" if parameter.required else " = None"
 
 

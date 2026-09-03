@@ -93,7 +93,7 @@ def _render_query_model(operation: Operation) -> str:
 def _render_query_field(parameter: Parameter) -> str:
     has_default = parameter.default is not NO_DEFAULT
     default_source = (
-        repr(parameter.default)
+        parameter.default_source or repr(parameter.default)
         if has_default
         else None
         if parameter.required
