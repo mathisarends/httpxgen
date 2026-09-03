@@ -19,7 +19,7 @@ def generate_client(spec: OpenAPISpec, package_name: str) -> dict[str, str]:
 
     managed_files = {
         "client.py": render_client(operations, schemas, client_name),
-        "models.py": render_models(schemas),
+        "models.py": render_models(schemas, operations),
         "exceptions.py": render_template(TemplateName.EXCEPTIONS),
         "__init__.py": render_package_init(schemas, client_name),
     }

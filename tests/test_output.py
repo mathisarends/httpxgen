@@ -1,6 +1,7 @@
 import asyncio
 import sys
 
+import httpx
 import pytest
 
 from httpxgen.generator import GenerationError
@@ -20,12 +21,16 @@ def test_write_client_creates_an_importable_package(tmp_path, generatable_spec):
         "py.typed",
     }
     package = _import_generated_package(tmp_path, "payments")
-    client = package.PaymentsClient("https://payments.example.com/api/")
+    http_client = httpx.AsyncClient()
+    client = package.PaymentsClient(
+        http_client,
+        "https://payments.example.com/api/",
+    )
     try:
         assert callable(client.create_charge)
         assert package.PaymentMethod is not None
     finally:
-        asyncio.run(client.aclose())
+        asyncio.run(http_client.aclose())
         _forget_generated_package(tmp_path, "payments")
 
 

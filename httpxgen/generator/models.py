@@ -1,4 +1,4 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -9,6 +9,12 @@ from httpxgen.generator.naming import (
     identifier,
     string_literal,
     used_names,
+)
+from httpxgen.generator.operations import (
+    Operation,
+    Parameter,
+    query_model_name,
+    query_parameters,
 )
 from httpxgen.generator.schema import (
     allows_none,
@@ -28,7 +34,10 @@ class _DiscriminatorEnum:
     values: tuple[str, ...]
 
 
-def render_models(schemas: Mapping[str, Any]) -> str:
+def render_models(
+    schemas: Mapping[str, Any],
+    operations: Sequence[Operation] = (),
+) -> str:
     discriminator_enums_by_field = _discriminator_enums(schemas)
     blocks = [
         *(
@@ -38,6 +47,11 @@ def render_models(schemas: Mapping[str, Any]) -> str:
         *(
             _render_component(name, schemas[name], discriminator_enums_by_field)
             for name in ordered_schemas(schemas)
+        ),
+        *(
+            _render_query_model(operation)
+            for operation in operations
+            if query_parameters(operation)
         ),
     ]
     body = "\n\n\n".join(block for block in blocks if block)
@@ -55,6 +69,25 @@ def exported_model_names(schemas: Mapping[str, Any]) -> list[str]:
         *discriminator_names,
         *(class_name(name) for name in ordered_schemas(schemas)),
     ]
+
+
+def _render_query_model(operation: Operation) -> str:
+    fields = "\n".join(
+        f"    {_render_query_field(parameter)}"
+        for parameter in query_parameters(operation)
+    )
+    return f"class {query_model_name(operation)}(BaseModel):\n{fields}"
+
+
+def _render_query_field(parameter: Parameter) -> str:
+    if parameter.name == parameter.wire_name:
+        default = "" if parameter.required else " = None"
+        return f"{parameter.name}: {parameter.annotation}{default}"
+
+    arguments = [f"serialization_alias={string_literal(parameter.wire_name)}"]
+    if not parameter.required:
+        arguments.insert(0, "None")
+    return f"{parameter.name}: {parameter.annotation} = Field({', '.join(arguments)})"
 
 
 def _render_model_imports(body: str) -> str:

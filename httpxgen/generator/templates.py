@@ -75,25 +75,31 @@ __all__ = [
 
 _CLIENT = """\
 {{ imports }}
+{% if supporting_types %}
+
+
+{{ supporting_types }}
+{% endif %}
 
 
 class {{ client_name }}:
     def __init__(
         self,
+        client: httpx.AsyncClient,
         base_url: str,
         *,
         headers: Mapping[str, str] | None = None,
         timeout: float = 30.0,
     ) -> None:
+        self._client = client
         self._base_url = base_url.rstrip("/")
         self._headers = dict(headers) if headers else {}
         self._timeout = timeout
-        self._client = httpx.AsyncClient()
 
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def __aenter__(self) -> "{{ client_name }}":
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, *exc_info: object) -> None:
@@ -108,17 +114,7 @@ _OPERATION = """\
 {{ signature }}        *,
         timeout: float | None = None,
     ) -> {{ return_annotation }}:
-{{ path_assignment }}{{ query_mapping }}{{ header_mapping }}
-{% if has_body %}
-        json_body = (
-            TypeAdapter({{ operation.body_annotation }}).dump_python(
-                body, mode="json", by_alias=True, exclude_none=True
-            )
-            if body is not None
-            else None
-        )
-
-{% endif %}
+{{ query_assignment }}{{ header_mapping }}{{ body_assignment }}
         response = await self._client.request(
             {{ request_arguments }},
         )

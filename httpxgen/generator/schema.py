@@ -11,7 +11,7 @@ def schema_type(schema: Mapping[str, Any]) -> str:
 
     variants = schema.get("oneOf") or schema.get("anyOf")
     if variants:
-        return f"({' | '.join(schema_type(item) for item in variants)})"
+        return " | ".join(schema_type(item) for item in variants)
     if "const" in schema:
         return f"Literal[{_literal(schema['const'])}]"
     if (enum := schema.get("enum")) is not None:

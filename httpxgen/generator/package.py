@@ -10,13 +10,13 @@ _RESERVED_NAMES = {"ApiError"}
 
 
 def render_package_init(schemas: Mapping[str, Any], client_name: str) -> str:
-    exported_models = exported_model_names(schemas)
+    exported_models = sorted(exported_model_names(schemas))
     _check_no_name_collisions(exported_models, client_name)
     model_names = ",\n    ".join(exported_models)
     imports = f"\n    {model_names},\n" if model_names else ""
     exports = "\n".join(
         f"    {string_literal(name)},"
-        for name in ["ApiError", client_name, *exported_models]
+        for name in sorted(["ApiError", client_name, *exported_models])
     )
     return render_template(
         TemplateName.PACKAGE_INIT,

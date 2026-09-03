@@ -79,6 +79,16 @@ def read_operations(spec: OpenAPISpec) -> tuple[Operation, ...]:
     return tuple(operations)
 
 
+def query_parameters(operation: Operation) -> tuple[Parameter, ...]:
+    return tuple(
+        parameter for parameter in operation.parameters if parameter.location == "query"
+    )
+
+
+def query_model_name(operation: Operation) -> str:
+    return f"{class_name(operation.name)}Params"
+
+
 def _read_parameters(values: Sequence[APIParameter]) -> tuple[Parameter, ...]:
     parameters: list[Parameter] = []
     for value in values:

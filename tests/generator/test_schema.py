@@ -22,7 +22,7 @@ from httpxgen.generator.schema import (
         ({"enum": ["open", "closed"]}, 'Literal["open", "closed"]'),
         (
             {"oneOf": [{"type": "string"}, {"type": "integer"}]},
-            "(str | int)",
+            "str | int",
         ),
         (
             {"type": "object", "additionalProperties": {"type": "boolean"}},
