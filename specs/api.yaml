@@ -1,0 +1,393 @@
+openapi: 3.1.0
+info:
+  title: Payments API
+  description: >
+    Single reference spec for testing httpxgen's client/model generation.
+    Deliberately packs in the edge cases a generator needs to get right:
+    discriminated unions (oneOf + discriminator), unions without a
+    discriminator (anyOf), deeply nested object graphs, allOf inheritance,
+    arrays of polymorphic items, nullable fields, const literals,
+    free-form additionalProperties, bearer auth, pagination, and a
+    binary upload endpoint.
+  version: "1.0.0"
+
+servers:
+  - url: https://payments.example.com/api
+
+security:
+  - bearerAuth: []
+
+paths:
+  /payment-methods:
+    post:
+      operationId: createPaymentMethod
+      summary: Create a payment method (card or bank transfer)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentMethod"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentMethod"
+
+  /customers/{customerId}:
+    get:
+      operationId: getCustomer
+      summary: Get a customer (deeply nested object graph)
+      security: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The customer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /customers/{customerId}/avatar:
+    put:
+      operationId: uploadCustomerAvatar
+      summary: Upload a customer avatar (binary body)
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          image/png:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Avatar updated
+
+  /charges:
+    post:
+      operationId: createCharge
+      summary: Create a charge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChargeRequest"
+      responses:
+        "201":
+          description: Charge created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charge"
+        "402":
+          description: Payment declined
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChargeError"
+    get:
+      operationId: listCharges
+      summary: List charges (cursor pagination)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ChargeStatus"
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 25
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Paginated charges
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChargePage"
+
+  /charges/{chargeId}/events:
+    get:
+      operationId: listChargeEvents
+      summary: List events for a charge (array of a discriminated union)
+      parameters:
+        - name: chargeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Events, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChargeEvent"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ---- enums / const -------------------------------------------------
+    ChargeStatus:
+      type: string
+      enum: [pending, succeeded, failed, refunded]
+
+    # ---- discriminated union (oneOf + discriminator) -------------------
+    CardPaymentMethod:
+      type: object
+      required: [type, card_number, exp_month, exp_year]
+      properties:
+        type:
+          type: string
+          const: card
+        card_number:
+          type: string
+        exp_month:
+          type: integer
+          minimum: 1
+          maximum: 12
+        exp_year:
+          type: integer
+        billing_address:
+          $ref: "#/components/schemas/Address"
+
+    BankTransferPaymentMethod:
+      type: object
+      required: [type, iban, account_holder]
+      properties:
+        type:
+          type: string
+          const: bank_transfer
+        iban:
+          type: string
+        account_holder:
+          type: string
+
+    PaymentMethod:
+      oneOf:
+        - $ref: "#/components/schemas/CardPaymentMethod"
+        - $ref: "#/components/schemas/BankTransferPaymentMethod"
+      discriminator:
+        propertyName: type
+        mapping:
+          card: "#/components/schemas/CardPaymentMethod"
+          bank_transfer: "#/components/schemas/BankTransferPaymentMethod"
+
+    # ---- array of a *second*, independent discriminated union ----------
+    ChargeCreatedEvent:
+      type: object
+      required: [type, occurred_at, charge]
+      properties:
+        type:
+          type: string
+          const: charge.created
+        occurred_at:
+          type: string
+          format: date-time
+        charge:
+          $ref: "#/components/schemas/Charge"
+
+    ChargeRefundedEvent:
+      type: object
+      required: [type, occurred_at, amount]
+      properties:
+        type:
+          type: string
+          const: charge.refunded
+        occurred_at:
+          type: string
+          format: date-time
+        amount:
+          $ref: "#/components/schemas/Money"
+        reason:
+          type: string
+          enum: [duplicate, fraudulent, requested_by_customer]
+          nullable: true
+
+    ChargeEvent:
+      oneOf:
+        - $ref: "#/components/schemas/ChargeCreatedEvent"
+        - $ref: "#/components/schemas/ChargeRefundedEvent"
+      discriminator:
+        propertyName: type
+        mapping:
+          charge.created: "#/components/schemas/ChargeCreatedEvent"
+          charge.refunded: "#/components/schemas/ChargeRefundedEvent"
+
+    # ---- allOf inheritance ----------------------------------------------
+    BaseEntity:
+      type: object
+      required: [id, created_at]
+      properties:
+        id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Money:
+      type: object
+      required: [amount_cents, currency]
+      properties:
+        amount_cents:
+          type: integer
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+
+    Address:
+      type: object
+      required: [street, city, country]
+      properties:
+        street:
+          type: string
+        city:
+          type: string
+        postal_code:
+          type: string
+        country:
+          type: string
+          minLength: 2
+          maxLength: 2
+
+    # ---- deeply nested object graph --------------------------------------
+    Customer:
+      allOf:
+        - $ref: "#/components/schemas/BaseEntity"
+        - type: object
+          required: [email, billing_profile]
+          properties:
+            email:
+              type: string
+              format: email
+            billing_profile:
+              type: object
+              required: [address]
+              properties:
+                address:
+                  $ref: "#/components/schemas/Address"
+                default_payment_method:
+                  anyOf:
+                    - $ref: "#/components/schemas/PaymentMethod"
+                    - type: "null"
+                saved_payment_methods:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/PaymentMethod"
+            metadata:
+              type: object
+              additionalProperties:
+                type: string
+
+    CreateChargeRequest:
+      type: object
+      required: [amount, payment_method]
+      properties:
+        amount:
+          $ref: "#/components/schemas/Money"
+        payment_method:
+          $ref: "#/components/schemas/PaymentMethod"
+        customer_id:
+          type: string
+          format: uuid
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        idempotency_key:
+          type: string
+          format: uuid
+
+    Charge:
+      allOf:
+        - $ref: "#/components/schemas/BaseEntity"
+        - type: object
+          required: [amount, status, payment_method]
+          properties:
+            amount:
+              $ref: "#/components/schemas/Money"
+            status:
+              $ref: "#/components/schemas/ChargeStatus"
+            payment_method:
+              $ref: "#/components/schemas/PaymentMethod"
+            refunded_amount:
+              $ref: "#/components/schemas/Money"
+              nullable: true
+            metadata:
+              type: object
+              additionalProperties:
+                type: string
+
+    ChargePage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Charge"
+        next_cursor:
+          type: string
+          nullable: true
+
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    ChargeError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [card_declined, insufficient_funds, invalid_iban]
+        message:
+          type: string
+        charge:
+          anyOf:
+            - $ref: "#/components/schemas/Charge"
+            - type: "null"
