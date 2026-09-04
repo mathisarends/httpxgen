@@ -501,6 +501,14 @@ components:
           type: string
           format: date-time
 
+    AuditInfo:
+      type: object
+      required: [updated_at]
+      properties:
+        updated_at:
+          type: string
+          format: date-time
+
     Money:
       type: object
       required: [amount_cents, currency]
@@ -593,6 +601,7 @@ components:
     Charge:
       allOf:
         - $ref: "#/components/schemas/BaseEntity"
+        - $ref: "#/components/schemas/AuditInfo"
         - type: object
           required: [amount, status, payment_method]
           properties:

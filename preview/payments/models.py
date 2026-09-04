@@ -59,6 +59,12 @@ class Address(BaseModel):
     country: str = Field(min_length=2, max_length=2)
 
 
+class AuditInfo(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    updated_at: datetime
+
+
 class BankTransferPaymentMethod(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -90,7 +96,7 @@ PaymentMethod = Annotated[
 ]
 
 
-class Charge(BaseEntity):
+class Charge(BaseEntity, AuditInfo):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     amount: Money

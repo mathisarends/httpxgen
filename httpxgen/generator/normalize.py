@@ -349,7 +349,7 @@ def _validate_all_of_conflicts(schemas: dict[str, dict[str, Any]]) -> None:
         return result
 
     for name, schema in schemas.items():
-        sources: dict[str, tuple[str, str]] = {}
+        sources: dict[str, tuple[dict[str, Any], str]] = {}
         parts = [schema, *schema.get("allOf", [])]
         for index, part in enumerate(parts):
             reference = part.get("$ref") if isinstance(part, dict) else None
@@ -365,14 +365,43 @@ def _validate_all_of_conflicts(schemas: dict[str, dict[str, Any]]) -> None:
             else:
                 continue
             for property_name, property_schema in part_properties.items():
-                signature = _schema_type_signature(property_schema)
+                semantic_schema = _semantic_schema(property_schema)
                 previous = sources.get(property_name)
-                if previous is not None and previous[0] != signature:
+                if previous is not None and previous[0] != semantic_schema:
+                    previous_type = _schema_type_signature(previous[0])
+                    current_type = _schema_type_signature(semantic_schema)
                     raise GenerationError(
                         f"{name}: allOf property {property_name!r} conflicts between "
-                        f"{previous[1]} and {source}"
+                        f"{previous[1]} ({previous_type}) and {source} "
+                        f"({current_type})"
                     )
-                sources[property_name] = signature, source
+                sources[property_name] = semantic_schema, source
+
+
+def _semantic_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    annotations = {
+        "deprecated",
+        "description",
+        "example",
+        "examples",
+        "externalDocs",
+        "title",
+        "xml",
+    }
+    return {
+        key: (
+            _semantic_schema(value)
+            if isinstance(value, dict)
+            else [
+                _semantic_schema(item) if isinstance(item, dict) else item
+                for item in value
+            ]
+            if isinstance(value, list)
+            else value
+        )
+        for key, value in schema.items()
+        if key not in annotations
+    }
 
 
 def _schema_type_signature(schema: dict[str, Any]) -> str:

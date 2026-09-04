@@ -14,6 +14,7 @@ from .invoices.models import (
 from .payments import PaymentsClient
 from .payments.models import (
     Address,
+    AuditInfo,
     BankTransferPaymentMethod,
     CardPaymentMethod,
     Charge,
@@ -44,6 +45,7 @@ __all__ = [
     "Address",
     "ApiError",
     "ApiErrorModel",
+    "AuditInfo",
     "BankTransferPaymentMethod",
     "BaseEntity",
     "CardPaymentMethod",

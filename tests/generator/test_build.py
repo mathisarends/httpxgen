@@ -259,7 +259,7 @@ def test_generate_workspace_shares_support_modules_between_tag_packages(
     assert 'POST = "POST"' in files["shared/http_methods.py"]
     assert "def apply_security(" in files["shared/serialization.py"]
     assert "class Money(BaseModel):" in files["shared/models.py"]
-    assert "class Charge(BaseEntity):" in files["payments/models.py"]
+    assert "class Charge(BaseEntity, AuditInfo):" in files["payments/models.py"]
     assert "class Invoice(BaseEntity):" in files["invoices/models.py"]
     assert "class Charge" not in files["invoices/models.py"]
     for tag in ("payments", "invoices"):

@@ -6,6 +6,7 @@
 from .client import PaymentsClient
 from .models import (
     Address,
+    AuditInfo,
     BankTransferPaymentMethod,
     CardPaymentMethod,
     Charge,
@@ -32,6 +33,7 @@ from .models import (
 
 __all__ = [
     "Address",
+    "AuditInfo",
     "BankTransferPaymentMethod",
     "CardPaymentMethod",
     "Charge",

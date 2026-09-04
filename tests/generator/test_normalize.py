@@ -196,7 +196,40 @@ def test_conflicting_all_of_property_types_are_rejected():
         }
     )
 
-    with pytest.raises(GenerationError, match="Combined.*value.*conflicts"):
+    with pytest.raises(
+        GenerationError,
+        match=r"Combined.*value.*A \('string'\).*B \('integer'\)",
+    ):
+        normalize_inline_schemas(spec)
+
+
+def test_conflicting_all_of_property_constraints_are_rejected():
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {},
+            "components": {
+                "schemas": {
+                    "ShortName": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string", "maxLength": 20}},
+                    },
+                    "LongName": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string", "maxLength": 100}},
+                    },
+                    "Combined": {
+                        "allOf": [
+                            {"$ref": "#/components/schemas/ShortName"},
+                            {"$ref": "#/components/schemas/LongName"},
+                        ]
+                    },
+                }
+            },
+        }
+    )
+
+    with pytest.raises(GenerationError, match="Combined.*name.*ShortName.*LongName"):
         normalize_inline_schemas(spec)
 
 

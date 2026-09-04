@@ -62,8 +62,8 @@ zu falschen Typen oder fehlendem Verhalten führen.
 - [x] Mehrere Request-/Response-Content-Types derselben Operation explizit
   modellieren
 - [x] `oneOf` als „genau eine Variante“ validieren
-- [ ] `allOf`-Property-Konflikte zwischen Basismodellen erkennen und mit
-  Schema-Kontext melden.
+- [x] `allOf`-Property-Konflikte zwischen Basismodellen erkennen und mit
+  Schema-Kontext melden
 - [ ] Response-Header als typisierte Daten verfügbar machen, ohne den einfachen
   Body-Return für Standardfälle unhandlich zu machen.
 - [ ] Default-Werte von referenzierten Enums als echte Enum-Member in

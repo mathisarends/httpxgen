@@ -423,6 +423,9 @@ normal, non-trivial API:
 - Non-discriminated `oneOf` aliases include an explicit Pydantic validator and
   reject values matching zero or multiple variants; `anyOf` remains a regular
   union.
+- Multiple `allOf` object references become readable Python multiple
+  inheritance. Conflicting definitions of the same property fail generation
+  with the component, property, and both source schemas in the error.
 - The schema component named `ApiError` is generated as `ApiErrorModel` to avoid
   colliding with the runtime exception.
 
