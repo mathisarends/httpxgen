@@ -259,3 +259,56 @@ def test_conflicting_discriminator_mapping_is_rejected():
 
     with pytest.raises(GenerationError, match="discriminator value"):
         normalize_inline_schemas(spec)
+
+
+def test_single_reference_all_of_collapses_to_reference_siblings():
+    def make(version):
+        return OpenAPISpec.model_validate(
+            {
+                "openapi": version,
+                "paths": {},
+                "components": {
+                    "schemas": {
+                        "Status": {"type": "string", "enum": ["open", "closed"]},
+                        "Item": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "allOf": [{"$ref": "#/components/schemas/Status"}],
+                                    "default": "open",
+                                }
+                            },
+                        },
+                    }
+                },
+            }
+        )
+
+    expected = {"$ref": "#/components/schemas/Status", "default": "open"}
+    for version in ("3.0.3", "3.1.0"):
+        schemas = normalize_inline_schemas(make(version)).components.schemas
+        assert schemas["Item"]["properties"]["status"] == expected
+
+
+def test_all_of_with_structure_is_left_as_composition():
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {},
+            "components": {
+                "schemas": {
+                    "Base": {"type": "object", "properties": {"id": {"type": "string"}}},
+                    "Item": {
+                        "allOf": [{"$ref": "#/components/schemas/Base"}],
+                        "required": ["name"],
+                        "properties": {"name": {"type": "string"}},
+                    },
+                }
+            },
+        }
+    )
+
+    item = normalize_inline_schemas(spec).components.schemas["Item"]
+
+    assert item["allOf"] == [{"$ref": "#/components/schemas/Base"}]
+    assert "$ref" not in item

@@ -610,6 +610,13 @@ components:
         idempotency_key:
           type: string
           format: uuid
+        status:
+          # OpenAPI 3.0 spells an annotated reference this way, because that
+          # version ignores $ref siblings. It means the same as the 3.1 form.
+          allOf:
+            - $ref: "#/components/schemas/ChargeStatus"
+          description: Requested initial status of the charge.
+          default: pending
 
     Charge:
       allOf:

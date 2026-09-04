@@ -437,6 +437,12 @@ normal, non-trivial API:
   checked together before any module is rendered. In a workspace this spans all
   tags at once, so two tags binding the same name to different definitions fail
   generation instead of silently re-exporting only one from the root package.
+- `$ref` siblings follow the document's OpenAPI version. 3.1 honors them; 3.0
+  ignores them, as that version requires. Because 3.0 has no other way to
+  annotate a reference, a single-entry `allOf` around a `$ref` carrying only
+  annotations (`default`, `description`, `nullable`, `readOnly`, `writeOnly`)
+  is treated as that reference with those siblings, so both versions generate
+  the same model. An `allOf` that adds structure stays real composition.
 - A `default` on a property or parameter that references an enum component is
   rendered as the enum member itself, so `CreateInvoiceRequest.status` defaults
   to `InvoiceStatus.DRAFT` rather than to the bare string `"draft"`. The value

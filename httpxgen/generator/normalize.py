@@ -22,6 +22,7 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
         )
         components = document["components"]
         schemas = components["schemas"]
+    _collapse_reference_all_of(document)
     _normalize_discriminators(schemas)
 
     def unique_name(suggested: str, schema: dict[str, Any]) -> str:
@@ -263,6 +264,48 @@ def _normalize_oas30_keywords(value: Any) -> None:
     elif isinstance(value, list):
         for item in value:
             _normalize_oas30_keywords(item)
+
+
+_REFERENCE_SIBLINGS = frozenset(
+    {
+        "default",
+        "deprecated",
+        "description",
+        "example",
+        "nullable",
+        "readOnly",
+        "title",
+        "writeOnly",
+    }
+)
+
+
+def _collapse_reference_all_of(value: Any) -> None:
+    """Rewrite `allOf: [$ref]` plus annotations into `$ref` with siblings.
+
+    OpenAPI 3.0 forbids `$ref` siblings, so wrapping the reference in a
+    single-entry `allOf` is the only way to attach a `default` or a
+    `description` to it. That means the same thing as the 3.1 sibling form,
+    which is the shape the rest of the generator already works with.
+    """
+    if isinstance(value, dict):
+        all_of = value.get("allOf")
+        siblings = {key: item for key, item in value.items() if key != "allOf"}
+        if (
+            isinstance(all_of, list)
+            and len(all_of) == 1
+            and isinstance(all_of[0], dict)
+            and set(all_of[0]) == {"$ref"}
+            and set(siblings) <= _REFERENCE_SIBLINGS
+        ):
+            value.clear()
+            value.update({"$ref": all_of[0]["$ref"], **siblings})
+            return
+        for item in value.values():
+            _collapse_reference_all_of(item)
+    elif isinstance(value, list):
+        for item in value:
+            _collapse_reference_all_of(item)
 
 
 def _strip_oas30_reference_siblings(value: Any) -> None:

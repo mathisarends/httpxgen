@@ -152,6 +152,7 @@ class CreateChargeRequest(BaseModel):
     customer_id: UUID = None
     metadata: dict[str, str] = None
     idempotency_key: UUID = None
+    status: ChargeStatus = ChargeStatus.PENDING
 
 
 class CustomerPart2BillingProfile(BaseModel):

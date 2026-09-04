@@ -71,7 +71,7 @@ zu falschen Typen oder fehlendem Verhalten führen.
   statische Default kann noch der rohe String sein.
 - [x] Alle Komponenten-Namensräume vor der Generierung gemeinsam auf Kollisionen
   prüfen, einschließlich synthetischer Inline- und Query-Modelle.
-- [ ] Lokale `$ref`-Geschwister exakt nach OpenAPI 3.0 versus 3.1 behandeln.
+- [x] Lokale `$ref`-Geschwister exakt nach OpenAPI 3.0 versus 3.1 behandeln.
 - [ ] Semantische Vorabvalidierung ausbauen: ungültige Discriminators,
   widersprüchliche Required-/Default-Angaben und ungültige Schema-Defaults.
 
