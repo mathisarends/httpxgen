@@ -12,6 +12,7 @@ _LAYOUT = Layout(
     exceptions="payments.exceptions",
     serialization="payments.serialization",
     models="payments.models",
+    http_methods="payments.http_methods",
 )
 
 
@@ -42,13 +43,14 @@ def test_render_client_imports_shared_support_from_the_workspace_package():
         exceptions="api.shared",
         serialization="api.shared",
         models="api.items.models",
+        http_methods="api.shared",
         shared_models="api.shared.models",
         shared_names=frozenset({"Money"}),
     )
 
     source = render_client((operation,), {}, "ItemsClient", layout)
 
-    assert "from api.shared import ApiError, serialize_path" in source
+    assert "from api.shared import ApiError, HttpMethods, serialize_path" in source
     assert "from payments." not in source
 
 
@@ -75,8 +77,8 @@ def test_render_client_renders_parameters_and_response_branches():
         (operation,), {"Charge": {"type": "object"}}, "Client", _LAYOUT
     )
 
-    assert 'method="GET"' in source
-    assert "class _HttpMethod" not in source
+    assert "method=HttpMethods.GET" in source
+    assert 'method="GET"' not in source
     assert "from payments.models import Charge, GetChargeParams" in source
     assert "params = GetChargeParams(" in source
     assert "status=status," in source

@@ -15,12 +15,15 @@ def test_generate_client_produces_a_complete_package(generatable_spec):
         "serialization.py",
         "models.py",
         "exceptions.py",
+        "http_methods.py",
         "__init__.py",
         "py.typed",
     }
     assert files["client.py"].startswith("# ")
     assert "class PaymentsClient" in files["client.py"]
     assert "class PaymentMethodType(StrEnum)" in files["models.py"]
+    assert "class HttpMethods(StrEnum):" in files["http_methods.py"]
+    assert "method=HttpMethods.POST" in files["client.py"]
     assert files["py.typed"] == ""
 
 
@@ -241,6 +244,7 @@ def test_generate_workspace_shares_support_modules_between_tag_packages(
         "py.typed",
         "shared/__init__.py",
         "shared/exceptions.py",
+        "shared/http_methods.py",
         "shared/serialization.py",
         "shared/models.py",
         "payments/__init__.py",
@@ -251,6 +255,8 @@ def test_generate_workspace_shares_support_modules_between_tag_packages(
         "invoices/models.py",
     }
     assert "class ApiError(Exception):" in files["shared/exceptions.py"]
+    assert "class HttpMethods(StrEnum):" in files["shared/http_methods.py"]
+    assert 'POST = "POST"' in files["shared/http_methods.py"]
     assert "def apply_security(" in files["shared/serialization.py"]
     assert "class Money(BaseModel):" in files["shared/models.py"]
     assert "class Charge(BaseEntity):" in files["payments/models.py"]
@@ -258,7 +264,10 @@ def test_generate_workspace_shares_support_modules_between_tag_packages(
     assert "class Charge" not in files["invoices/models.py"]
     for tag in ("payments", "invoices"):
         client = files[f"{tag}/client.py"]
-        assert "from api.shared import ApiError" in client
+        assert "    ApiError," in client
+        assert "    HttpMethods," in client
+        assert "method=HttpMethods." in client
+        assert 'method="' not in client
         assert f"from api.{tag}.models import" in client
         assert "class ApiError(Exception):" not in client
         assert "def apply_security(" not in client

@@ -18,11 +18,19 @@ from preview.payments.models import (
     ChargeStatus,
     CreateChargeRequest,
     Customer,
+    CustomerProfileRequest,
+    CustomerProfileResponse,
     ListChargesParams,
     PaymentMethod,
     PaymentMethodReference,
 )
-from preview.shared import ApiError, apply_security, serialize_path, serialize_query
+from preview.shared import (
+    ApiError,
+    HttpMethods,
+    apply_security,
+    serialize_path,
+    serialize_query,
+)
 from preview.shared.models import ApiErrorModel
 
 
@@ -79,7 +87,7 @@ class PaymentsClient:
         apply_security(self._credentials, [("bearerAuth",)], headers, query, {})
 
         response = await self._client.request(
-            method="GET",
+            method=HttpMethods.GET,
             url=f"{self._base_url}{path}",
             params=query,
             headers=headers,
@@ -109,7 +117,7 @@ class PaymentsClient:
         )
 
         response = await self._client.request(
-            method="POST",
+            method=HttpMethods.POST,
             url=f"{self._base_url}{path}",
             headers=headers,
             json=json_body,
@@ -139,7 +147,7 @@ class PaymentsClient:
         apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
         response = await self._client.request(
-            method="GET",
+            method=HttpMethods.GET,
             url=f"{self._base_url}{path}",
             headers=headers,
             timeout=self._timeout if timeout is None else timeout,
@@ -147,6 +155,36 @@ class PaymentsClient:
 
         if response.status_code == 200:
             return TypeAdapter(list[ChargeEvent]).validate_python(response.json())
+
+        raise ApiError(response.status_code, response.text, response=response)
+
+    async def create_customer_profile(
+        self,
+        body: CustomerProfileRequest,
+        *,
+        timeout: float | None = None,
+    ) -> CustomerProfileResponse:
+        path = "/customer-profiles"
+
+        headers = dict(self._headers)
+        headers.setdefault("Accept", "application/json")
+
+        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+
+        json_body = TypeAdapter(CustomerProfileRequest).dump_python(
+            body, mode="json", by_alias=True, exclude_none=True
+        )
+
+        response = await self._client.request(
+            method=HttpMethods.POST,
+            url=f"{self._base_url}{path}",
+            headers=headers,
+            json=json_body,
+            timeout=self._timeout if timeout is None else timeout,
+        )
+
+        if response.status_code == 201:
+            return CustomerProfileResponse.model_validate(response.json())
 
         raise ApiError(response.status_code, response.text, response=response)
 
@@ -163,7 +201,7 @@ class PaymentsClient:
         headers.setdefault("Accept", "application/json")
 
         response = await self._client.request(
-            method="GET",
+            method=HttpMethods.GET,
             url=f"{self._base_url}{path}",
             headers=headers,
             timeout=self._timeout if timeout is None else timeout,
@@ -195,7 +233,7 @@ class PaymentsClient:
         )
 
         response = await self._client.request(
-            method="POST",
+            method=HttpMethods.POST,
             url=f"{self._base_url}{path}",
             headers=headers,
             json=json_body,
@@ -225,7 +263,7 @@ class PaymentsClient:
         )
 
         response = await self._client.request(
-            method="POST",
+            method=HttpMethods.POST,
             url=f"{self._base_url}{path}",
             headers=headers,
             json=json_body,

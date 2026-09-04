@@ -29,6 +29,7 @@ class Layout:
     exceptions: str
     serialization: str
     models: str
+    http_methods: str = ""
     shared_models: str = ""
     shared_names: frozenset[str] = frozenset()
 
@@ -118,6 +119,9 @@ def _render_client_imports(
     lines.append("")
     by_module: dict[str, list[str]] = {}
     by_module.setdefault(layout.exceptions, []).append("ApiError")
+    by_module.setdefault(layout.http_methods or layout.serialization, []).append(
+        "HttpMethods"
+    )
     by_module.setdefault(layout.serialization, []).extend(
         _serialization_helpers(operations)
     )
@@ -418,7 +422,7 @@ def _render_required_body(body: Body) -> list[str]:
 
 def _render_request_arguments(operation: Operation) -> str:
     arguments = [
-        f"method={string_literal(operation.method.upper())}",
+        f"method=HttpMethods.{operation.method.name}",
         'url=f"{self._base_url}{path}"',
     ]
     if _needs_query(operation):

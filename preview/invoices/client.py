@@ -17,7 +17,13 @@ from preview.invoices.models import (
     InvoiceStatus,
     ListInvoicesParams,
 )
-from preview.shared import ApiError, apply_security, serialize_path, serialize_query
+from preview.shared import (
+    ApiError,
+    HttpMethods,
+    apply_security,
+    serialize_path,
+    serialize_query,
+)
 from preview.shared.models import ApiErrorModel
 
 
@@ -74,7 +80,7 @@ class InvoicesClient:
         apply_security(self._credentials, [("bearerAuth",)], headers, query, {})
 
         response = await self._client.request(
-            method="GET",
+            method=HttpMethods.GET,
             url=f"{self._base_url}{path}",
             params=query,
             headers=headers,
@@ -104,7 +110,7 @@ class InvoicesClient:
         )
 
         response = await self._client.request(
-            method="POST",
+            method=HttpMethods.POST,
             url=f"{self._base_url}{path}",
             headers=headers,
             json=json_body,
@@ -134,7 +140,7 @@ class InvoicesClient:
         apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
         response = await self._client.request(
-            method="GET",
+            method=HttpMethods.GET,
             url=f"{self._base_url}{path}",
             headers=headers,
             timeout=self._timeout if timeout is None else timeout,
@@ -163,7 +169,7 @@ class InvoicesClient:
         apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
         response = await self._client.request(
-            method="POST",
+            method=HttpMethods.POST,
             url=f"{self._base_url}{path}",
             headers=headers,
             timeout=self._timeout if timeout is None else timeout,

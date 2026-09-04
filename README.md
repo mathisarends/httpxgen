@@ -10,6 +10,7 @@ openapi.json  ──▶  httpxgen  ──▶  payments/
                                     ├── client.py         # the public client class
                                     ├── models.py
                                     ├── exceptions.py     # ApiError
+                                    ├── http_methods.py   # HttpMethods
                                     ├── serialization.py  # parameter and auth helpers
                                     └── py.typed
 ```
@@ -22,6 +23,7 @@ openapi.json  ──▶  httpxgen  ──▶  api/
                                     ├── __init__.py       # clients, ApiError, all models
                                     ├── shared/           # generated once
                                     │     ├── exceptions.py
+                                    │     ├── http_methods.py
                                     │     ├── models.py   # only models used by both tags
                                     │     └── serialization.py
                                     ├── payments/
@@ -168,7 +170,7 @@ class PaymentsClient:
         apply_security(self._credentials, [("bearerAuth",)], headers, query, {})
 
         response = await self._client.request(
-            method="GET",
+            method=HttpMethods.GET,
             url=f"{self._base_url}{path}",
             params=query,
             headers=headers,
@@ -197,7 +199,7 @@ Path parameters carry their spec format — `format: uuid` becomes `UUID`, not `
         headers.setdefault("Accept", "application/json")
 
         response = await self._client.request(
-            method="GET",
+            method=HttpMethods.GET,
             url=f"{self._base_url}{path}",
             headers=headers,
             timeout=self._timeout if timeout is None else timeout,
@@ -318,8 +320,8 @@ httpxgen openapi.json src/billing \
   --schema-tag webhooks
 ```
 
-Repeat `--tag` and you get one client package per tag. `ApiError` and the
-serialization helpers are generated once in `shared/`, and every model lands in
+Repeat `--tag` and you get one client package per tag. `ApiError`, `HttpMethods`,
+and the serialization helpers are generated once in `shared/`, and every model lands in
 the package that uses it — `shared/models.py` holds only what more than one tag
 references. Generated modules import each other absolutely, so the output reads
 the same wherever you open it:
@@ -331,7 +333,7 @@ httpxgen specs/api.yml src/api --package-name api --tag payments --tag invoices
 ```python
 # src/api/invoices/client.py
 from api.invoices.models import CreateInvoiceRequest, Invoice, InvoicePage
-from api.shared import ApiError, apply_security, serialize_path
+from api.shared import ApiError, HttpMethods, apply_security, serialize_path
 from api.shared.models import ApiErrorModel
 ```
 

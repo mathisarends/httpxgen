@@ -27,14 +27,16 @@ from .payments.models import (
     CreateChargeRequest,
     Customer,
     CustomerPart2BillingProfile,
+    CustomerProfileRequest,
+    CustomerProfileResponse,
     PaymentMethod,
     PaymentMethodFingerprintReference,
     PaymentMethodIdReference,
     PaymentMethodReference,
     PaymentMethodType,
 )
-from .shared import ApiError
-from .shared.models import ApiErrorModel, BaseEntity, Money
+from .shared import ApiError, HttpMethods
+from .shared.models import ApiErrorModel, BaseEntity, CustomerProfile, Money
 
 __all__ = [
     "Address",
@@ -55,6 +57,10 @@ __all__ = [
     "CreateInvoiceRequest",
     "Customer",
     "CustomerPart2BillingProfile",
+    "CustomerProfile",
+    "CustomerProfileRequest",
+    "CustomerProfileResponse",
+    "HttpMethods",
     "Invoice",
     "InvoiceLineItem",
     "InvoicePage",

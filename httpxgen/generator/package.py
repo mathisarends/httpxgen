@@ -15,6 +15,7 @@ _RESERVED_NAMES = {
     "BaseModel",
     "ConfigDict",
     "Field",
+    "HttpMethods",
     "Literal",
     "StrEnum",
     "TypeAdapter",
@@ -54,9 +55,10 @@ def render_package_init(schemas: Mapping[str, Any], client_name: str) -> str:
     imports = [
         f"from .client import {client_name}",
         "from .exceptions import ApiError",
+        "from .http_methods import HttpMethods",
         *_model_import(".models", models),
     ]
-    return _render_init(imports, ["ApiError", client_name, *models])
+    return _render_init(imports, ["ApiError", "HttpMethods", client_name, *models])
 
 
 def render_client_package_init(client_name: str, models: Sequence[str]) -> str:
@@ -84,11 +86,12 @@ def render_workspace_init(
                 *_model_import(f".{module}.models", models_by_module.get(module, ())),
             )
         ),
-        "from .shared import ApiError",
+        "from .shared import ApiError, HttpMethods",
         *_model_import(".shared.models", shared_models),
     ]
     names = [
         "ApiError",
+        "HttpMethods",
         *(name for _, name in clients),
         *shared_models,
         *(name for models in models_by_module.values() for name in models),

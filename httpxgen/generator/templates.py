@@ -9,6 +9,7 @@ class TemplateName(StrEnum):
     ENUM = "enum"
     EXCEPTIONS = "exceptions"
     GENERATED_HEADER = "generated_header"
+    HTTP_METHODS = "http_methods"
     MODEL = "model"
     MODELS = "models"
     OPERATION = "operation"
@@ -43,6 +44,21 @@ class ApiError(Exception):
         self.body = body
         self.parsed_body = parsed_body
         self.response = response
+'''
+
+_HTTP_METHODS = '''\
+from enum import StrEnum
+
+
+class HttpMethods(StrEnum):
+    GET = "GET"
+    PUT = "PUT"
+    POST = "POST"
+    DELETE = "DELETE"
+    OPTIONS = "OPTIONS"
+    HEAD = "HEAD"
+    PATCH = "PATCH"
+    TRACE = "TRACE"
 '''
 
 _SERIALIZATION = """\
@@ -262,6 +278,7 @@ _OPERATION = """\
 
 _SHARED_INIT = """\
 from .exceptions import ApiError
+from .http_methods import HttpMethods
 from .serialization import (
     Credential,
     SecurityScheme,
@@ -275,6 +292,7 @@ from .serialization import (
 __all__ = [
     "ApiError",
     "Credential",
+    "HttpMethods",
     "SecurityScheme",
     "apply_security",
     "scalar",
@@ -289,6 +307,7 @@ _TEMPLATES: dict[TemplateName, str] = {
     TemplateName.ENUM: _ENUM,
     TemplateName.EXCEPTIONS: _EXCEPTIONS,
     TemplateName.GENERATED_HEADER: _GENERATED_HEADER_TEMPLATE,
+    TemplateName.HTTP_METHODS: _HTTP_METHODS,
     TemplateName.MODEL: _MODEL,
     TemplateName.MODELS: _MODELS,
     TemplateName.OPERATION: _OPERATION,

@@ -4,6 +4,7 @@
 
 
 from .exceptions import ApiError
+from .http_methods import HttpMethods
 from .serialization import (
     Credential,
     SecurityScheme,
@@ -17,6 +18,7 @@ from .serialization import (
 __all__ = [
     "ApiError",
     "Credential",
+    "HttpMethods",
     "SecurityScheme",
     "apply_security",
     "scalar",

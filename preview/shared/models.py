@@ -31,3 +31,11 @@ class Money(BaseModel):
 
     amount_cents: int
     currency: str = Field(min_length=3, max_length=3)
+
+
+class CustomerProfile(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    id: str
+    display_name: str
+    invitation_code: str

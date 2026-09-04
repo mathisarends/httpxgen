@@ -164,6 +164,20 @@ class Customer(BaseEntity):
     metadata: dict[str, str] = None
 
 
+class CustomerProfileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    display_name: str
+    invitation_code: str
+
+
+class CustomerProfileResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    id: str
+    display_name: str
+
+
 class PaymentMethodFingerprintReference(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 

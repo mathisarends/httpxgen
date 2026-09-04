@@ -18,6 +18,7 @@ def test_write_client_creates_an_importable_package(tmp_path, generatable_spec):
         "serialization.py",
         "client.py",
         "exceptions.py",
+        "http_methods.py",
         "models.py",
         "py.typed",
     }

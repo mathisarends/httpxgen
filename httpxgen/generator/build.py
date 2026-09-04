@@ -34,12 +34,14 @@ def generate_client(spec: OpenAPISpec, package_name: str) -> dict[str, str]:
         exceptions=f"{package_name}.exceptions",
         serialization=f"{package_name}.serialization",
         models=f"{package_name}.models",
+        http_methods=f"{package_name}.http_methods",
     )
     return _finish(
         {
             "client.py": render_client(operations, schemas, client_name, layout),
             "models.py": render_models(schemas, operations),
             "exceptions.py": render_template(TemplateName.EXCEPTIONS),
+            "http_methods.py": render_template(TemplateName.HTTP_METHODS),
             "serialization.py": render_serialization(read_security_schemes(spec)),
             "__init__.py": render_package_init(schemas, client_name),
         }
@@ -68,6 +70,7 @@ def generate_workspace(
 
     files = {
         f"{_SHARED}/exceptions.py": render_template(TemplateName.EXCEPTIONS),
+        f"{_SHARED}/http_methods.py": render_template(TemplateName.HTTP_METHODS),
         f"{_SHARED}/serialization.py": render_serialization(
             read_security_schemes(spec)
         ),
@@ -86,6 +89,7 @@ def generate_workspace(
             exceptions=shared_module,
             serialization=shared_module,
             models=f"{package_name}.{module}.models",
+            http_methods=shared_module,
             shared_models=f"{shared_module}.models",
             shared_names=shared_names,
         )
