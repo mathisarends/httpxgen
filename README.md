@@ -437,6 +437,12 @@ normal, non-trivial API:
   checked together before any module is rendered. In a workspace this spans all
   tags at once, so two tags binding the same name to different definitions fail
   generation instead of silently re-exporting only one from the root package.
+- Discriminators are validated before generation: `propertyName` must be
+  present, the schema must be a `oneOf`/`anyOf` of references, and every
+  `mapping` entry must name an existing schema that is one of the variants.
+  Mapping values may be a full `$ref` or a bare schema name. A property that is
+  both `required` and carries a `default` is rejected, as are defaults that
+  contradict the schema's `type`, `enum`, or `const`.
 - `$ref` siblings follow the document's OpenAPI version. 3.1 honors them; 3.0
   ignores them, as that version requires. Because 3.0 has no other way to
   annotate a reference, a single-entry `allOf` around a `$ref` carrying only

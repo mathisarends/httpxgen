@@ -72,19 +72,22 @@ zu falschen Typen oder fehlendem Verhalten führen.
 - [x] Alle Komponenten-Namensräume vor der Generierung gemeinsam auf Kollisionen
   prüfen, einschließlich synthetischer Inline- und Query-Modelle.
 - [x] Lokale `$ref`-Geschwister exakt nach OpenAPI 3.0 versus 3.1 behandeln.
-- [ ] Semantische Vorabvalidierung ausbauen: ungültige Discriminators,
+- [x] Semantische Vorabvalidierung ausbauen: ungültige Discriminators,
   widersprüchliche Required-/Default-Angaben und ungültige Schema-Defaults.
 
 ### Aktueller Fortsetzungspunkt
 
-Stand 4. September 2026: Bis einschließlich der typisierten Response-Header
-sind die Punkte oben implementiert, getestet, in README und Referenz-Spezifikation
-dokumentiert und in `preview/` sichtbar. Als Nächstes folgt isoliert das Rendern
-referenzierter Enum-Defaults als echte Enum-Member in Methodensignaturen. Danach
-folgen Namensraum-Kollisionen, versionsgenaue `$ref`-Geschwister und die übrige
-semantische Vorabvalidierung. Jeder dieser Schritte erhält weiterhin Tests,
-einen sichtbaren Preview-Fall soweit generierbarer Code betroffen ist, und einen
-eigenen Commit.
+Stand 4. September 2026: Alle Punkte unter „Noch offen – hohe Priorität" sind
+implementiert, getestet, in README und Referenz-Spezifikation dokumentiert und –
+soweit generierbarer Code betroffen ist – in `preview/` sichtbar. Zuletzt kamen
+referenzierte Enum-Defaults als echte Enum-Member, die gemeinsame
+Namensraum-Prüfung über alle Tags, versionsgenaue `$ref`-Geschwister samt der
+3.0-Schreibweise `allOf: [$ref]`, und die erweiterte semantische
+Vorabvalidierung hinzu.
+
+Damit bleibt nur noch der Abschnitt „Bewusst später / außerhalb des
+Kernumfangs". Neue Arbeit sollte weiterhin Tests, einen sichtbaren Preview-Fall
+und einen eigenen Commit erhalten.
 
 ## Bewusst später / außerhalb des Kernumfangs
 

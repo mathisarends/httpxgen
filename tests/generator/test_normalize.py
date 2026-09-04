@@ -297,7 +297,10 @@ def test_all_of_with_structure_is_left_as_composition():
             "paths": {},
             "components": {
                 "schemas": {
-                    "Base": {"type": "object", "properties": {"id": {"type": "string"}}},
+                    "Base": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}},
+                    },
                     "Item": {
                         "allOf": [{"$ref": "#/components/schemas/Base"}],
                         "required": ["name"],
@@ -312,3 +315,113 @@ def test_all_of_with_structure_is_left_as_composition():
 
     assert item["allOf"] == [{"$ref": "#/components/schemas/Base"}]
     assert "$ref" not in item
+
+
+def _schemas_spec(schemas):
+    return OpenAPISpec.model_validate(
+        {"openapi": "3.1.0", "paths": {}, "components": {"schemas": schemas}}
+    )
+
+
+_VARIANTS = {
+    "Cat": {"type": "object", "properties": {"kind": {"type": "string"}}},
+    "Dog": {"type": "object", "properties": {"kind": {"type": "string"}}},
+}
+
+
+@pytest.mark.parametrize(
+    ("discriminator", "variants", "message"),
+    [
+        (
+            {"propertyName": "kind"},
+            None,
+            "discriminator requires oneOf or anyOf",
+        ),
+        ({}, "oneOf", "discriminator has no propertyName"),
+        (
+            {"propertyName": "kind", "mapping": {"c": "Missing"}},
+            "oneOf",
+            "points at unknown schema",
+        ),
+        (
+            {"propertyName": "kind", "mapping": {"d": "Dog"}},
+            "oneOf",
+            "which is not one of the variants",
+        ),
+    ],
+)
+def test_invalid_discriminators_are_rejected(discriminator, variants, message):
+    union = {"discriminator": discriminator}
+    if variants is None:
+        union["allOf"] = [{"$ref": "#/components/schemas/Cat"}]
+    else:
+        union[variants] = [{"$ref": "#/components/schemas/Cat"}]
+
+    with pytest.raises(GenerationError) as error:
+        normalize_inline_schemas(_schemas_spec({**_VARIANTS, "Pet": union}))
+
+    assert message in str(error.value)
+
+
+def test_discriminated_union_variants_must_be_references():
+    union = {
+        "oneOf": [{"type": "object", "properties": {"kind": {"type": "string"}}}],
+        "discriminator": {"propertyName": "kind"},
+    }
+
+    with pytest.raises(GenerationError) as error:
+        normalize_inline_schemas(_schemas_spec({**_VARIANTS, "Pet": union}))
+
+    assert "must be a $ref" in str(error.value)
+
+
+def test_discriminator_mapping_accepts_bare_schema_names():
+    union = {
+        "oneOf": [
+            {"$ref": "#/components/schemas/Cat"},
+            {"$ref": "#/components/schemas/Dog"},
+        ],
+        "discriminator": {
+            "propertyName": "kind",
+            "mapping": {"cat": "Cat", "dog": "Dog"},
+        },
+    }
+
+    schemas = normalize_inline_schemas(
+        _schemas_spec({**_VARIANTS, "Pet": union})
+    ).components.schemas
+
+    assert schemas["Cat"]["properties"]["kind"]["const"] == "cat"
+    assert schemas["Dog"]["properties"]["kind"]["const"] == "dog"
+
+
+def test_required_property_may_not_also_declare_a_default():
+    schemas = {
+        "Item": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {"name": {"type": "string", "default": "x"}},
+        }
+    }
+
+    with pytest.raises(GenerationError) as error:
+        normalize_inline_schemas(_schemas_spec(schemas))
+
+    assert "required and also declares a default" in str(error.value)
+
+
+def test_optional_property_defaults_stay_valid():
+    schemas = {
+        "Item": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+                "name": {"type": "string"},
+                "retries": {"type": "integer", "default": 3},
+            },
+        }
+    }
+
+    item = normalize_inline_schemas(_schemas_spec(schemas)).components.schemas["Item"]
+
+    assert item["properties"]["retries"]["default"] == 3

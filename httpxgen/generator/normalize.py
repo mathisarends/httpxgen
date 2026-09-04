@@ -23,6 +23,7 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
         components = document["components"]
         schemas = components["schemas"]
     _collapse_reference_all_of(document)
+    _validate_discriminators(schemas)
     _normalize_discriminators(schemas)
 
     def unique_name(suggested: str, schema: dict[str, Any]) -> str:
@@ -171,6 +172,52 @@ def _rewrite_reference(value: Any, old: str, new: str) -> Any:
     return new if value == old else value
 
 
+def _mapping_reference(target: str) -> str:
+    """Expand a discriminator mapping value, which may be a bare schema name."""
+    return target if target.startswith("#/") else f"#/components/schemas/{target}"
+
+
+def _validate_discriminators(schemas: dict[str, dict[str, Any]]) -> None:
+    prefix = "#/components/schemas/"
+    for name, schema in schemas.items():
+        discriminator = schema.get("discriminator")
+        if not isinstance(discriminator, dict):
+            continue
+        variants = schema.get("oneOf") or schema.get("anyOf")
+        if not variants:
+            raise GenerationError(
+                f"{name}: discriminator requires oneOf or anyOf; discriminated "
+                "allOf inheritance is not supported"
+            )
+        property_name = discriminator.get("propertyName")
+        if not isinstance(property_name, str) or not property_name:
+            raise GenerationError(f"{name}: discriminator has no propertyName")
+        references = set()
+        for variant in variants:
+            reference = variant.get("$ref") if isinstance(variant, dict) else None
+            if not isinstance(reference, str):
+                raise GenerationError(
+                    f"{name}: every variant of a discriminated union must be a $ref"
+                )
+            references.add(reference)
+        for value, target in discriminator.get("mapping", {}).items():
+            if not isinstance(target, str):
+                raise GenerationError(
+                    f"{name}: discriminator mapping {value!r} is not a string"
+                )
+            reference = _mapping_reference(target)
+            if reference.removeprefix(prefix) not in schemas:
+                raise GenerationError(
+                    f"{name}: discriminator mapping {value!r} points at unknown "
+                    f"schema {target!r}"
+                )
+            if reference not in references:
+                raise GenerationError(
+                    f"{name}: discriminator mapping {value!r} points at {target!r}, "
+                    "which is not one of the variants"
+                )
+
+
 def _normalize_discriminators(schemas: dict[str, dict[str, Any]]) -> None:
     prefix = "#/components/schemas/"
     for union in list(schemas.values()):
@@ -180,7 +227,10 @@ def _normalize_discriminators(schemas: dict[str, dict[str, Any]]) -> None:
         if not variants or not property_name:
             continue
         mapping = discriminator.get("mapping", {})
-        values_by_reference = {reference: value for value, reference in mapping.items()}
+        values_by_reference = {
+            _mapping_reference(reference): value
+            for value, reference in mapping.items()
+        }
         for variant in variants:
             reference = variant.get("$ref") if isinstance(variant, dict) else None
             if not isinstance(reference, str) or not reference.startswith(prefix):
@@ -352,6 +402,9 @@ def _validate_schema_semantics(schemas: dict[str, dict[str, Any]]) -> None:
             _validate_default(effective, location)
         properties = effective.get("properties", {})
         if isinstance(properties, dict):
+            required = effective.get("required", [])
+            if isinstance(required, list):
+                _validate_required_defaults(properties, required, location)
             for name, child in properties.items():
                 visit(child, f"{location}.{name}", seen)
         if isinstance(effective.get("items"), dict):
@@ -362,6 +415,21 @@ def _validate_schema_semantics(schemas: dict[str, dict[str, Any]]) -> None:
 
     for name, schema in schemas.items():
         visit(schema, name)
+
+
+def _validate_required_defaults(
+    properties: dict[str, Any], required: list[Any], location: str
+) -> None:
+    """A required property can never fall back to its default."""
+    for name in required:
+        child = properties.get(name)
+        # A discriminator const is written into required by normalization and
+        # carries no default, so only an authored default reaches this.
+        if isinstance(child, dict) and "default" in child:
+            raise GenerationError(
+                f"{location}.{name}: property is required and also declares a "
+                "default; drop one of the two"
+            )
 
 
 def _validate_default(schema: dict[str, Any], location: str) -> None:
