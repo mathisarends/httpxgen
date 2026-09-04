@@ -173,6 +173,31 @@ paths:
         "204":
           description: Replaced
 
+  /customer-profiles/convert:
+    post:
+      operationId: convertCustomerProfile
+      summary: Convert a profile between JSON and plain-text representations
+      tags: [payments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerProfile"
+          text/plain:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: Converted profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerProfile"
+            text/plain:
+              schema:
+                type: string
+
   /charges:
     post:
       operationId: createCharge

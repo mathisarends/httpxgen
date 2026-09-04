@@ -4,7 +4,7 @@
 
 
 from collections.abc import Mapping
-from typing import Self
+from typing import Any, Literal, Self
 from uuid import UUID
 
 import httpx
@@ -247,6 +247,54 @@ class PaymentsClient:
 
         if response.status_code == 204:
             return None
+
+        raise ApiError(response.status_code, response.text, response=response)
+
+    async def convert_customer_profile(
+        self,
+        body: CustomerProfileRequest | str,
+        *,
+        content_type: Literal["application/json", "text/plain"] = "application/json",
+        timeout: float | None = None,
+    ) -> CustomerProfileResponse | str:
+        path = "/customer-profiles/convert"
+
+        headers = dict(self._headers)
+        headers.setdefault("Accept", "application/json, text/plain")
+
+        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+
+        body_arguments: dict[str, Any] = {}
+        if content_type == "application/json":
+            body_arguments["json"] = TypeAdapter(CustomerProfileRequest).dump_python(
+                body, mode="json", by_alias=True, exclude_none=True
+            )
+        elif content_type == "text/plain":
+            body_arguments["content"] = body
+            headers.setdefault("Content-Type", "text/plain")
+
+        response = await self._client.request(
+            method=HttpMethods.POST,
+            url=f"{self._base_url}{path}",
+            headers=headers,
+            **body_arguments,
+            timeout=self._timeout if timeout is None else timeout,
+        )
+
+        if response.status_code == 200:
+            response_content_type = response.headers.get("Content-Type", "")
+            response_content_type = response_content_type.split(";", 1)[0].lower()
+            if response_content_type == "application/json":
+                parsed_body = CustomerProfileResponse.model_validate(response.json())
+            elif response_content_type == "text/plain":
+                parsed_body = response.text
+            else:
+                raise ApiError(
+                    response.status_code,
+                    f"unsupported response Content-Type: {response_content_type}",
+                    response=response,
+                )
+            return parsed_body
 
         raise ApiError(response.status_code, response.text, response=response)
 

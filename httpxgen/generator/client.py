@@ -101,9 +101,14 @@ def _render_client_imports(
     layout: Layout,
 ) -> str:
     typing_names = used_names(annotations, ("Literal",))
-    if any(len(_operation_bodies(operation)) > 1 for operation in operations):
+    has_content_variants = any(
+        len(_operation_bodies(operation)) > 1 for operation in operations
+    )
+    if has_content_variants:
         typing_names.append("Literal")
-    if any(_has_optional_body(operation) for operation in operations):
+    if has_content_variants or any(
+        _has_optional_body(operation) for operation in operations
+    ):
         typing_names.insert(0, "Any")
     typing_names.append("Self")
     lines = ["from collections.abc import Mapping"]

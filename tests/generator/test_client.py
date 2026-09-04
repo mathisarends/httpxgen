@@ -182,6 +182,26 @@ def test_render_client_guards_optional_request_body_serialization():
     assert "**body_arguments," in source
 
 
+def test_render_client_imports_types_used_by_content_variants():
+    operation = Operation(
+        method=HttpMethod.POST,
+        path="/convert",
+        name="convert",
+        parameters=(),
+        body_annotation="Payload | str",
+        body_required=True,
+        body=Body("Payload", True),
+        bodies=(Body("Payload", True), Body("str", True, "text/plain", "text")),
+        responses=(Response(204, "None", None),),
+    )
+
+    source = render_client(
+        (operation,), {"Payload": {"type": "object"}}, "Client", _LAYOUT
+    )
+
+    assert "from typing import Any, Literal, Self" in source
+
+
 def test_render_serialization_renders_the_security_schemes():
     operation = Operation(
         method=HttpMethod.GET,
