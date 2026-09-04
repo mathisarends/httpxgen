@@ -191,6 +191,117 @@ def test_generated_client_applies_an_api_key_and_reads_a_text_response(tmp_path)
             del sys.modules[name]
 
 
+def test_generated_client_sends_form_multipart_and_binary_bodies(tmp_path):
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {
+                "/profile": {
+                    "post": {
+                        "operationId": "updateProfile",
+                        "requestBody": {
+                            "required": True,
+                            "content": {
+                                "application/x-www-form-urlencoded": {
+                                    "schema": {
+                                        "type": "object",
+                                        "required": ["name"],
+                                        "properties": {"name": {"type": "string"}},
+                                    }
+                                }
+                            },
+                        },
+                        "responses": {"204": {}},
+                    }
+                },
+                "/avatar": {
+                    "post": {
+                        "operationId": "uploadAvatar",
+                        "requestBody": {
+                            "required": True,
+                            "content": {
+                                "multipart/form-data": {
+                                    "schema": {
+                                        "type": "object",
+                                        "required": ["file", "description"],
+                                        "properties": {
+                                            "file": {
+                                                "type": "string",
+                                                "format": "binary",
+                                            },
+                                            "description": {"type": "string"},
+                                        },
+                                    }
+                                }
+                            },
+                        },
+                        "responses": {"204": {}},
+                    }
+                },
+                "/archive": {
+                    "put": {
+                        "operationId": "replaceArchive",
+                        "requestBody": {
+                            "required": True,
+                            "content": {
+                                "application/octet-stream": {
+                                    "schema": {
+                                        "type": "string",
+                                        "format": "binary",
+                                    }
+                                }
+                            },
+                        },
+                        "responses": {"204": {}},
+                    }
+                },
+            },
+        }
+    )
+    package_dir = tmp_path / "body_api"
+    write_client(spec=spec, package_dir=package_dir, package_name="body_api")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/profile":
+            assert request.headers["Content-Type"].startswith(
+                "application/x-www-form-urlencoded"
+            )
+            assert request.content == b"name=Ada+Lovelace"
+        elif request.url.path == "/avatar":
+            assert request.headers["Content-Type"].startswith("multipart/form-data;")
+            assert b'name="description"' in request.content
+            assert b'name="file"' in request.content
+            assert b"portrait" in request.content
+        else:
+            assert request.headers["Content-Type"] == "application/octet-stream"
+            assert request.content == b"archive"
+        return httpx.Response(204)
+
+    sys.path.insert(0, str(tmp_path))
+    try:
+        package = importlib.import_module("body_api")
+        http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = package.BodyApiClient(http_client, "https://example.test")
+
+        async def exercise():
+            await client.update_profile(package.UpdateProfileBody(name="Ada Lovelace"))
+            await client.upload_avatar(
+                package.UploadAvatarBody(file=b"portrait", description="avatar")
+            )
+            await client.replace_archive(b"archive")
+            await client.aclose()
+
+        asyncio.run(exercise())
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in [
+            name
+            for name in sys.modules
+            if name == "body_api" or name.startswith("body_api.")
+        ]:
+            del sys.modules[name]
+
+
 def test_read_only_and_write_only_fields_use_directional_models(tmp_path):
     spec = OpenAPISpec.model_validate(
         {

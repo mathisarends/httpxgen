@@ -41,6 +41,8 @@ class Body:
     annotation: str
     required: bool
     media_type: str = "application/json"
+    kind: str = "json"
+    binary_fields: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -246,10 +248,23 @@ def _read_body(value: RequestBody | Reference | None, spec: OpenAPISpec) -> Body
                 value.ref, "requestBodies", spec.components.request_bodies
             )
         )
-    schema, media_type, _ = _select_media(
-        value.content, "request body", kinds=("json",)
+    schema, media_type, kind = _select_media(
+        value.content,
+        "request body",
+        kinds=("json", "form", "multipart", "binary"),
     )
-    return Body(schema_type(schema), value.required, media_type)
+    annotation = "bytes" if kind == "binary" else schema_type(schema)
+    shape = schema
+    if "$ref" in schema:
+        name = _reference_name(schema["$ref"], "schemas")
+        shape = spec.components.schemas.get(name, schema)
+    _, shape = split_all_of(shape)
+    binary_fields = tuple(
+        name
+        for name, field in shape.get("properties", {}).items()
+        if field.get("format") == "binary"
+    )
+    return Body(annotation, value.required, media_type, kind, binary_fields)
 
 
 def _read_responses(
@@ -345,6 +360,10 @@ def _media_kind(media_type: str, media: MediaType) -> str:
     normalized = media_type.split(";", 1)[0].strip().lower()
     if normalized == "application/json" or normalized.endswith("+json"):
         return "json"
+    if normalized == "application/x-www-form-urlencoded":
+        return "form"
+    if normalized == "multipart/form-data":
+        return "multipart"
     if normalized.startswith("text/"):
         return "text"
     if (

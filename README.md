@@ -228,6 +228,11 @@ Request bodies are a single typed `body` argument, serialized by alias and witho
         ...
 ```
 
+The same direct shape is used for other ordinary body encodings:
+`application/x-www-form-urlencoded` is passed as `data=`, multipart object
+fields are separated into `data=` and `files=`, and binary payloads use
+`content=`. Multipart boundaries remain under `httpx`'s control.
+
 The client is an async context manager, so `httpx` connections are closed for you:
 
 ```python
@@ -425,17 +430,17 @@ as an implicit network destination.
 
 httpxgen targets ordinary OpenAPI 3.0 and 3.1 client specifications, not every
 JSON Schema feature. It supports JSON/YAML input, local component references,
-path/query/header/cookie serialization, JSON request bodies, JSON/text/binary
-responses, numeric/default/status-range responses, typed error bodies, common
+path/query/header/cookie serialization, JSON/form/multipart/binary request
+bodies, JSON/text/binary responses, numeric/default/status-range responses,
+typed error bodies, common
 security schemes, directional request/response models, inline and recursive
 Pydantic models, enums, nullable values, discriminated unions, and practical
 `allOf` inheritance.
 
 Unsupported constructs fail generation where possible. Important remaining
-limitations are exact non-discriminated `oneOf` semantics, form/multipart and
-binary request bodies, multiple selectable media types, response-header return
-models, external references, streaming, callbacks/webhooks, automatic
-pagination, and a synchronous client.
+limitations are exact non-discriminated `oneOf` semantics, multiple selectable
+media types, response-header return models, external references, streaming,
+callbacks/webhooks, automatic pagination, and a synchronous client.
 
 See [`MISSING_IMPL.md`](MISSING_IMPL.md) for the prioritized checklist and the
 test requirements for each future step.

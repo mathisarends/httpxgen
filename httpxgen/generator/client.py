@@ -6,6 +6,7 @@ from typing import Any
 from httpxgen.generator.naming import class_name, string_literal, used_names
 from httpxgen.generator.operations import (
     NO_DEFAULT,
+    Body,
     Operation,
     Parameter,
     Response,
@@ -299,19 +300,84 @@ def _render_body(operation: Operation) -> str:
     if body is None:
         return ""
     if body.required:
-        return (
-            f"{_INDENT}json_body = TypeAdapter({body.annotation}).dump_python(\n"
-            f'{_INDENT}    body, mode="json", by_alias=True, exclude_none=True\n'
-            f"{_INDENT})\n"
+        return "".join(_render_required_body(body))
+
+    lines = [
+        f"{_INDENT}body_arguments: dict[str, Any] = {{}}\n",
+        f"{_INDENT}if body is not None:\n",
+    ]
+    indent = f"{_INDENT}    "
+    if body.kind == "json":
+        lines.extend(
+            [
+                f'{indent}body_arguments["json"] = TypeAdapter(',
+                f"{body.annotation}).dump_python(\n",
+                f'{indent}    body, mode="json", by_alias=True, exclude_none=True\n',
+                f"{indent})\n",
+            ]
         )
-    return (
-        f"{_INDENT}body_arguments: dict[str, Any] = {{}}\n"
-        f"{_INDENT}if body is not None:\n"
-        f'{_INDENT}    body_arguments["json"] = '
-        f"TypeAdapter({body.annotation}).dump_python(\n"
-        f'{_INDENT}        body, mode="json", by_alias=True, exclude_none=True\n'
-        f"{_INDENT}    )\n"
-    )
+    elif body.kind in {"form", "multipart"}:
+        lines.extend(
+            [
+                f"{indent}body_data = TypeAdapter({body.annotation}).dump_python(\n",
+                f'{indent}    body, mode="python", by_alias=True, exclude_none=True\n',
+                f"{indent})\n",
+            ]
+        )
+        if body.kind == "form":
+            lines.append(f'{indent}body_arguments["data"] = body_data\n')
+        else:
+            lines.extend(
+                [
+                    f"{indent}files = {{}}\n",
+                    f"{indent}form = dict(body_data)\n",
+                ]
+            )
+            for name in body.binary_fields:
+                literal = string_literal(name)
+                lines.extend(
+                    [
+                        f"{indent}if {literal} in form:\n",
+                        f"{indent}    files[{literal}] = form.pop({literal})\n",
+                    ]
+                )
+            lines.append(f"{indent}body_arguments.update(data=form, files=files)\n")
+    else:
+        lines.append(f'{indent}body_arguments["content"] = body\n')
+    return "".join(lines)
+
+
+def _render_required_body(body: Body) -> list[str]:
+    if body.kind == "json":
+        return [
+            f"{_INDENT}json_body = TypeAdapter({body.annotation}).dump_python(\n",
+            f'{_INDENT}    body, mode="json", by_alias=True, exclude_none=True\n',
+            f"{_INDENT})\n",
+        ]
+    if body.kind == "form":
+        return [
+            f"{_INDENT}form_data = TypeAdapter({body.annotation}).dump_python(\n",
+            f'{_INDENT}    body, mode="python", by_alias=True, exclude_none=True\n',
+            f"{_INDENT})\n",
+        ]
+    if body.kind == "multipart":
+        lines = [
+            f"{_INDENT}body_data = TypeAdapter({body.annotation}).dump_python(\n",
+            f'{_INDENT}    body, mode="python", by_alias=True, exclude_none=True\n',
+            f"{_INDENT})\n",
+            f"{_INDENT}form_data = dict(body_data)\n",
+            f"{_INDENT}files: dict[str, bytes] = {{}}\n",
+        ]
+        for name in body.binary_fields:
+            literal = string_literal(name)
+            lines.extend(
+                [
+                    f"{_INDENT}if {literal} in form_data:\n",
+                    f"{_INDENT}    files[{literal}] = form_data.pop({literal})\n",
+                ]
+            )
+        return lines
+    return []
 
 
 def _render_request_arguments(operation: Operation) -> str:
@@ -327,9 +393,17 @@ def _render_request_arguments(operation: Operation) -> str:
     if _needs_cookies(operation):
         arguments.append("cookies=cookies")
     if operation.body is not None:
-        arguments.append(
-            "json=json_body" if operation.body.required else "**body_arguments"
-        )
+        body = operation.body
+        if not body.required:
+            arguments.append("**body_arguments")
+        elif body.kind == "json":
+            arguments.append("json=json_body")
+        elif body.kind == "form":
+            arguments.append("data=form_data")
+        elif body.kind == "multipart":
+            arguments.extend(("data=form_data", "files=files"))
+        else:
+            arguments.append("content=body")
     arguments.append("timeout=self._timeout if timeout is None else timeout")
     return ",\n            ".join(arguments)
 
@@ -385,7 +459,11 @@ def _accept_header(operation: Operation) -> str:
 
 def _content_type_header(operation: Operation) -> str:
     body = operation.body
-    if body is None or body.media_type.split(";", 1)[0].lower() == "application/json":
+    if (
+        body is None
+        or body.kind in {"form", "multipart"}
+        or body.media_type.split(";", 1)[0].lower() == "application/json"
+    ):
         return ""
     return body.media_type
 

@@ -58,8 +58,7 @@ zu falschen Typen oder fehlendem Verhalten führen.
 
 - [x] `readOnly` und `writeOnly` durch getrennte Request-/Response-Modelle
   abbilden. Ein gemeinsames Modell kann derzeit auf einer Seite zu viel verlangen.
-- [ ] Form-, Multipart- und Binär-Request-Bodies wieder unterstützen. Aktuell
-  bricht die Generierung dafür mit einer `GenerationError` ab.
+- [x] Form-, Multipart- und Binär-Request-Bodies unterstützen
 - [ ] Mehrere Request-/Response-Content-Types derselben Operation explizit
   modellieren. Aktuell wählt der Generator bevorzugt JSON, danach den ersten
   unterstützten Response-Typ.

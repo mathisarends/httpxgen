@@ -226,6 +226,59 @@ def test_request_body_and_response_component_references_are_resolved():
     assert operation.responses[0].kind == "text"
 
 
+@pytest.mark.parametrize(
+    ("media_type", "schema", "kind", "annotation", "binary_fields"),
+    [
+        (
+            "application/x-www-form-urlencoded",
+            {"type": "object", "properties": {"name": {"type": "string"}}},
+            "form",
+            "dict[str, Any]",
+            (),
+        ),
+        (
+            "multipart/form-data",
+            {
+                "type": "object",
+                "properties": {"file": {"type": "string", "format": "binary"}},
+            },
+            "multipart",
+            "dict[str, Any]",
+            ("file",),
+        ),
+        (
+            "application/octet-stream",
+            {"type": "string", "format": "binary"},
+            "binary",
+            "bytes",
+            (),
+        ),
+    ],
+)
+def test_request_body_encodings_are_read(
+    media_type, schema, kind, annotation, binary_fields
+):
+    spec = _spec_with_operation(
+        {
+            "operationId": "upload",
+            "requestBody": {
+                "required": True,
+                "content": {media_type: {"schema": schema}},
+            },
+            "responses": {"204": {}},
+        }
+    )
+
+    body = read_operations(spec)[0].body
+
+    assert body is not None
+    assert (body.kind, body.annotation, body.binary_fields) == (
+        kind,
+        annotation,
+        binary_fields,
+    )
+
+
 def test_referenced_enum_defaults_use_enum_members():
     spec = OpenAPISpec.model_validate(
         {
