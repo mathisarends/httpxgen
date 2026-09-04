@@ -393,73 +393,38 @@ client-check:
 	uvx httpxgen openapi.json src/payments --package-name payments --check
 ```
 
-## How the Payments API is handled
+## Details worth knowing
 
-The repository fixture in `specs/api.yml` is the executable reference for a
-normal, non-trivial API:
+- **Auth.** Security requirements become the `credentials` mapping passed to the
+  client. An operation with `security: []` stays public.
+- **Errors.** Every non-matching status raises `ApiError`. A documented error
+  schema is validated onto `error.parsed_body`, and the original
+  `httpx.Response` is always on `error.response`.
+- **Response headers.** Responses that declare headers return a small
+  operation-specific model with the validated payload on `body` and the typed
+  headers beside it. Everything else returns the body directly.
+- **Read-only / write-only.** A schema whose properties are split by direction
+  becomes two models — `UserRequest` without the read-only fields,
+  `UserResponse` without the write-only ones — so neither side has to supply
+  data it cannot provide.
+- **Content types.** An operation with several request media types gets a typed
+  `content_type` keyword and defaults to JSON (`+json` included). Responses are
+  decoded by their actual `Content-Type`; an undocumented one raises `ApiError`
+  rather than being guessed.
+- **Base URL.** Always passed explicitly — `servers` is never used as an
+  implicit network destination.
+- **Naming.** A schema component named `ApiError` is generated as
+  `ApiErrorModel` so it cannot collide with the exception. All generated names
+  are checked together before anything is rendered — across every tag in a
+  workspace — so a collision fails generation instead of silently dropping one
+  definition.
+- **Strictness.** Contradictory specs fail loudly: conflicting `allOf` property
+  definitions, invalid discriminators, and defaults that contradict their own
+  `type`, `enum`, `const`, or `required` flag all abort generation with the
+  offending component named.
 
-- Its global `bearerAuth` requirement becomes the `credentials` entry shown
-  above. `getCustomer` declares `security: []`, so that method remains public.
-- `page_size` is validated to be between 1 and 200 and defaults to 25. Optional
-  query values are omitted; arrays and objects follow their OpenAPI
-  `style`/`explode` rules.
-- Path values are percent-encoded. A value containing `/` remains one path
-  segment instead of changing the endpoint.
-- `CreateChargeRequest` is serialized as JSON by alias. JSON-compatible vendor
-  media types such as `application/problem+json` are handled as JSON too.
-- A successful charge response becomes `Charge`. The documented 402 response
-  raises `ApiError`; its validated `ChargeError` is available as
-  `error.parsed_body`. Undocumented statuses also raise `ApiError`, with the
-  original `httpx.Response` on `error.response`.
-- Responses with declared headers return a small operation-specific model whose
-  `body` field contains the usual validated value and whose remaining fields
-  contain optional typed headers. Responses without declared headers keep the
-  direct body return shown above.
-- The nested billing profile becomes a real generated model rather than
-  `dict[str, Any]`. Unknown response fields are retained unless the schema says
-  `additionalProperties: false`.
-- Schemas containing `readOnly` or `writeOnly` properties are split where they
-  cross the HTTP boundary. For example, a shared `User` schema becomes
-  `UserRequest` without read-only fields and `UserResponse` without write-only
-  fields, so neither side requires data it cannot provide.
-- `oneOf` plus `discriminator` becomes a discriminated Pydantic union. Recursive
-  object models and discriminator `mapping` values are supported.
-- Non-discriminated `oneOf` aliases include an explicit Pydantic validator and
-  reject values matching zero or multiple variants; `anyOf` remains a regular
-  union.
-- Multiple `allOf` object references become readable Python multiple
-  inheritance. Conflicting definitions of the same property fail generation
-  with the component, property, and both source schemas in the error.
-- The schema component named `ApiError` is generated as `ApiErrorModel` to avoid
-  colliding with the runtime exception.
-- Every generated name — component classes, discriminator enums, synthetic
-  inline models, query models, response models, and the client classes — is
-  checked together before any module is rendered. In a workspace this spans all
-  tags at once, so two tags binding the same name to different definitions fail
-  generation instead of silently re-exporting only one from the root package.
-- Discriminators are validated before generation: `propertyName` must be
-  present, the schema must be a `oneOf`/`anyOf` of references, and every
-  `mapping` entry must name an existing schema that is one of the variants.
-  Mapping values may be a full `$ref` or a bare schema name. A property that is
-  both `required` and carries a `default` is rejected, as are defaults that
-  contradict the schema's `type`, `enum`, or `const`.
-- `$ref` siblings follow the document's OpenAPI version. 3.1 honors them; 3.0
-  ignores them, as that version requires. Because 3.0 has no other way to
-  annotate a reference, a single-entry `allOf` around a `$ref` carrying only
-  annotations (`default`, `description`, `nullable`, `readOnly`, `writeOnly`)
-  is treated as that reference with those siblings, so both versions generate
-  the same model. An `allOf` that adds structure stays real composition.
-- A `default` on a property or parameter that references an enum component is
-  rendered as the enum member itself, so `CreateInvoiceRequest.status` defaults
-  to `InvoiceStatus.DRAFT` rather than to the bare string `"draft"`. The value
-  sent over the wire is unchanged.
-
-When an operation offers several request content types, its method exposes a
-typed `content_type` keyword and defaults to JSON (including `+json`) when
-available. Responses are decoded according to their actual `Content-Type`
-header; an undocumented type raises `ApiError` instead of being guessed. Pass
-the base URL explicitly: `servers` is not used as an implicit network
-destination.
+`specs/api.yml` in this repository is the executable reference for all of the
+above.
 
 ## Scope
 
