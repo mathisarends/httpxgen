@@ -124,9 +124,10 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
             operation_name = class_name(operation.get("operationId", method.value))
             for parameter in operation.get("parameters", []):
                 if "schema" in parameter:
+                    parameter_name = class_name(parameter.get("name", "Parameter"))
                     parameter["schema"] = process(
                         parameter["schema"],
-                        f"{operation_name}{class_name(parameter.get('name', 'Parameter'))}Parameter",
+                        f"{operation_name}{parameter_name}Parameter",
                         lift_root=True,
                     )
             request_body = operation.get("requestBody", {})
@@ -228,8 +229,7 @@ def _normalize_discriminators(schemas: dict[str, dict[str, Any]]) -> None:
             continue
         mapping = discriminator.get("mapping", {})
         values_by_reference = {
-            _mapping_reference(reference): value
-            for value, reference in mapping.items()
+            _mapping_reference(reference): value for value, reference in mapping.items()
         }
         for variant in variants:
             reference = variant.get("$ref") if isinstance(variant, dict) else None
@@ -262,7 +262,8 @@ def _normalize_discriminators(schemas: dict[str, dict[str, Any]]) -> None:
             )
             if declared_values is not None and value not in declared_values:
                 raise GenerationError(
-                    f"discriminator value {value!r} conflicts with {component_name}.{property_name}"
+                    f"discriminator value {value!r} conflicts with "
+                    f"{component_name}.{property_name}"
                 )
             if declared_values is None:
                 field["const"] = value

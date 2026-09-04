@@ -197,5 +197,6 @@ def _check_no_name_collisions(exported_models: list[str], client_name: str) -> N
     )
     if duplicates:
         raise GenerationError(
-            f"multiple component schemas map to the same class name: {', '.join(duplicates)}"
+            "multiple component schemas map to the same class name: "
+            + ", ".join(duplicates)
         )

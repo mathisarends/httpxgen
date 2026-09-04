@@ -53,7 +53,8 @@ def render_models(
     conflicts = sorted(set(query_names).intersection(component_names))
     if conflicts:
         raise GenerationError(
-            f"generated query model names conflict with components: {', '.join(conflicts)}"
+            "generated query model names conflict with components: "
+            + ", ".join(conflicts)
         )
     discriminator_enums_by_field, enums_by_union = _discriminator_enums(schemas)
     blocks = [

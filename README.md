@@ -414,8 +414,18 @@ test requirements for each future step.
 ## Development
 
 ```sh
-uv sync
+uv sync --all-groups
 uv run pytest
+uv run ruff check .          # lint
+uv run ruff format .         # format
+```
+
+`preview/` is generated output, checked in so the effect of a change is visible
+in review. Regenerate it whenever generated code changes — CI fails if it is
+stale:
+
+```sh
+./scripts/generate-preview.sh
 ```
 
 ## License

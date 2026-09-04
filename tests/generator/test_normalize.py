@@ -229,7 +229,7 @@ def test_conflicting_all_of_property_constraints_are_rejected():
         }
     )
 
-    with pytest.raises(GenerationError, match="Combined.*name.*ShortName.*LongName"):
+    with pytest.raises(GenerationError, match=r"Combined.*name.*ShortName.*LongName"):
         normalize_inline_schemas(spec)
 
 

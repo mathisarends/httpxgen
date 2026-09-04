@@ -86,7 +86,7 @@ def test_schema_tags_retain_models_without_their_operations(tagged_spec):
 
 
 def test_unknown_tags_are_reported_with_available_tags(tagged_spec):
-    with pytest.raises(GenerationError, match="missing.*charges, customers"):
+    with pytest.raises(GenerationError, match=r"missing.*charges, customers"):
         filter_operations_by_tags(tagged_spec, ["missing"])
 
 
@@ -99,6 +99,7 @@ def test_empty_tag_filter_returns_an_independent_copy(tagged_spec):
 
 
 def test_unique_schema_titles_become_canonical_names():
+    reference = {"$ref": "#/components/schemas/generated-name"}
     spec = OpenAPISpec.model_validate(
         {
             "openapi": "3.1.0",
@@ -109,13 +110,7 @@ def test_unique_schema_titles_become_canonical_names():
                         "tags": ["charges"],
                         "responses": {
                             "200": {
-                                "content": {
-                                    "application/json": {
-                                        "schema": {
-                                            "$ref": "#/components/schemas/generated-name"
-                                        }
-                                    }
-                                }
+                                "content": {"application/json": {"schema": reference}}
                             }
                         },
                     }

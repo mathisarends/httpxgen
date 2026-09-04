@@ -272,12 +272,8 @@ def _render_query(operation: Operation) -> str:
         lines.append(f"{_INDENT})\n")
     lines.append(f"{_INDENT}query: list[tuple[str, str]] = []\n")
     for parameter in parameters:
-        lines.append(
-            _guarded(
-                parameter,
-                f"query.extend({_serialize_call(parameter, f'params.{parameter.name}')})",
-            )
-        )
+        call = _serialize_call(parameter, f"params.{parameter.name}")
+        lines.append(_guarded(parameter, f"query.extend({call})"))
     return "".join(lines)
 
 
@@ -543,7 +539,10 @@ def _response_result(response: Response, body: str, indent: str) -> str:
 
 def _render_content_response(contents: Sequence[ResponseContent]) -> list[str]:
     lines = [
-        '            response_content_type = response.headers.get("Content-Type", "")\n',
+        (
+            "            response_content_type = "
+            'response.headers.get("Content-Type", "")\n'
+        ),
         (
             "            response_content_type = "
             'response_content_type.split(";", 1)[0].lower()\n'
