@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import sys
+from uuid import UUID
 
 import httpx
 
@@ -384,6 +385,89 @@ def test_multiple_content_types_are_selected_and_parsed_explicitly(tmp_path):
             name
             for name in sys.modules
             if name == "content_api" or name.startswith("content_api.")
+        ]:
+            del sys.modules[name]
+
+
+def test_declared_response_headers_are_returned_as_typed_data(tmp_path):
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {
+                "/limits": {
+                    "get": {
+                        "operationId": "getLimits",
+                        "responses": {
+                            "200": {
+                                "headers": {
+                                    "X-Request-ID": {
+                                        "schema": {
+                                            "type": "string",
+                                            "format": "uuid",
+                                        }
+                                    },
+                                    "X-Remaining": {"schema": {"type": "integer"}},
+                                    "X-Tags": {
+                                        "schema": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                        }
+                                    },
+                                },
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "required": ["limit"],
+                                            "properties": {
+                                                "limit": {"type": "integer"}
+                                            },
+                                        }
+                                    }
+                                },
+                            }
+                        },
+                    }
+                }
+            },
+        }
+    )
+    package_dir = tmp_path / "headers_api"
+    write_client(spec=spec, package_dir=package_dir, package_name="headers_api")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"limit": 100},
+            headers={
+                "X-Request-ID": "11111111-1111-1111-1111-111111111111",
+                "X-Remaining": "42",
+                "X-Tags": "payments,priority",
+            },
+        )
+
+    sys.path.insert(0, str(tmp_path))
+    try:
+        package = importlib.import_module("headers_api")
+        http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = package.HeadersApiClient(http_client, "https://example.test")
+
+        async def exercise():
+            result = await client.get_limits()
+            assert isinstance(result, package.GetLimitsResult200)
+            assert result.body.limit == 100
+            assert result.x_request_id == UUID("11111111-1111-1111-1111-111111111111")
+            assert result.x_remaining == 42
+            assert result.x_tags == ["payments", "priority"]
+            await client.aclose()
+
+        asyncio.run(exercise())
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in [
+            name
+            for name in sys.modules
+            if name == "headers_api" or name.startswith("headers_api.")
         ]:
             del sys.modules[name]
 

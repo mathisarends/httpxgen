@@ -223,3 +223,9 @@ class ListChargesParams(BaseModel):
     status: ChargeStatus | None = None
     cursor: str | None = None
     page_size: int = Field(25, ge=1, le=200)
+
+
+class CreateChargeResult201(BaseModel):
+    body: Charge
+    x_request_id: UUID | None = None
+    x_rate_limit_remaining: int | None = None

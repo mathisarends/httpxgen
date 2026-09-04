@@ -14,6 +14,7 @@ from httpxgen.generator.operations import (
     NO_DEFAULT,
     Operation,
     Parameter,
+    Response,
     query_model_name,
     query_parameters,
 )
@@ -71,6 +72,12 @@ def render_models(
             for operation in operations
             if query_parameters(operation)
         ),
+        *(
+            _render_response_model(response)
+            for operation in operations
+            for response in operation.responses
+            if response.result_annotation is not None
+        ),
     ]
     body = "\n\n\n".join(block for block in blocks if block)
     if not body:
@@ -97,6 +104,19 @@ def _render_query_model(operation: Operation) -> str:
         for parameter in query_parameters(operation)
     )
     return f"class {query_model_name(operation)}(BaseModel):\n{fields}"
+
+
+def _render_response_model(response: Response) -> str:
+    fields = [f"    body: {response.annotation}"]
+    fields.extend(
+        f"    {header.name}: {_optional(header.annotation)} = None"
+        for header in response.headers
+    )
+    return f"class {response.result_annotation}(BaseModel):\n" + "\n".join(fields)
+
+
+def _optional(annotation: str) -> str:
+    return annotation if "None" in annotation else f"{annotation} | None"
 
 
 def _render_query_field(parameter: Parameter) -> str:

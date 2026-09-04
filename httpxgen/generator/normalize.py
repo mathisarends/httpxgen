@@ -94,6 +94,18 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
                     media["schema"] = process(
                         media["schema"], f"{component_name}Response", lift_root=True
                     )
+            for header_name, header in response.get("headers", {}).items():
+                if "$ref" not in header and "schema" in header:
+                    header["schema"] = process(
+                        header["schema"],
+                        f"{component_name}{class_name(header_name)}Header",
+                        lift_root=True,
+                    )
+    for component_name, header in components.get("headers", {}).items():
+        if "$ref" not in header and "schema" in header:
+            header["schema"] = process(
+                header["schema"], f"{component_name}Header", lift_root=True
+            )
 
     for path_item in document.get("paths", {}).values():
         for parameter in path_item.get("parameters", []):
@@ -130,6 +142,14 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
                         media["schema"] = process(
                             media["schema"],
                             f"{operation_name}Response{status}",
+                            lift_root=True,
+                        )
+                for header_name, header in response.get("headers", {}).items():
+                    if "$ref" not in header and "schema" in header:
+                        header["schema"] = process(
+                            header["schema"],
+                            f"{operation_name}Response{status}"
+                            f"{class_name(header_name)}Header",
                             lift_root=True,
                         )
     _split_directional_schemas(document)

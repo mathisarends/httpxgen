@@ -7,6 +7,7 @@ from httpxgen.generator.errors import GenerationError
 from httpxgen.generator.naming import class_name, enum_member, identifier
 from httpxgen.generator.schema import is_object, schema_type, split_all_of
 from httpxgen.openapi import (
+    APIHeader,
     APIParameter,
     APIResponse,
     HttpMethod,
@@ -54,6 +55,13 @@ class ResponseContent:
 
 
 @dataclass(frozen=True)
+class ResponseHeader:
+    name: str
+    wire_name: str
+    annotation: str
+
+
+@dataclass(frozen=True)
 class Response:
     status: int | str
     annotation: str
@@ -62,6 +70,8 @@ class Response:
     kind: str = "json"
     media_type: str | None = None
     contents: tuple[ResponseContent, ...] = ()
+    headers: tuple[ResponseHeader, ...] = ()
+    result_annotation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -130,7 +140,13 @@ def read_operations(spec: OpenAPISpec) -> tuple[Operation, ...]:
                         else None
                     ),
                     body_required=body.required if body else False,
-                    responses=_read_responses(operation.responses, method, path, spec),
+                    responses=_read_responses(
+                        operation.responses,
+                        method,
+                        path,
+                        identifier(operation.operation_id),
+                        spec,
+                    ),
                     body=body,
                     security=requirements,
                     security_schemes=schemes,
@@ -291,6 +307,7 @@ def _read_responses(
     values: Mapping[str, APIResponse | Reference],
     method: HttpMethod,
     path: str,
+    operation_name: str,
     spec: OpenAPISpec,
 ) -> tuple[Response, ...]:
     responses: list[Response] = []
@@ -301,6 +318,7 @@ def _read_responses(
                 _resolve_component(response.ref, "responses", spec.components.responses)
             )
         success = _is_success_status(status_text)
+        headers = _read_response_headers(response.headers, spec, method, path)
         model_annotation: str | None = None
         if response.content:
             contents = tuple(
@@ -341,11 +359,68 @@ def _read_responses(
                 kind=kind,
                 media_type=media_type,
                 contents=contents,
+                headers=headers,
+                result_annotation=(
+                    f"{class_name(operation_name)}Result{status_text.upper()}"
+                    if headers
+                    else None
+                ),
             )
         )
     if not any(response.success for response in responses):
         raise GenerationError(f"{method.upper()} {path} has no 2xx response")
     return tuple(sorted(responses, key=_response_sort_key))
+
+
+def _read_response_headers(
+    values: Mapping[str, Reference | APIHeader],
+    spec: OpenAPISpec,
+    method: HttpMethod,
+    path: str,
+) -> tuple[ResponseHeader, ...]:
+    headers: list[ResponseHeader] = []
+    for wire_name, raw_header in values.items():
+        header = raw_header
+        if isinstance(header, Reference):
+            header = APIHeader.model_validate(
+                _resolve_component(header.ref, "headers", spec.components.headers)
+            )
+        if header.content:
+            raise GenerationError(
+                f"{method.upper()} {path} response header {wire_name!r} uses "
+                "unsupported content encoding"
+            )
+        if is_object(header.schema_):
+            raise GenerationError(
+                f"{method.upper()} {path} response header {wire_name!r} has an "
+                "unsupported object schema"
+            )
+        headers.append(
+            ResponseHeader(
+                name=_header_identifier(wire_name),
+                wire_name=wire_name,
+                annotation=schema_type(header.schema_),
+            )
+        )
+    names = [header.name for header in headers]
+    if "body" in names or len(names) != len(set(names)):
+        raise GenerationError(
+            f"{method.upper()} {path} has response header names that collide in Python"
+        )
+    return tuple(headers)
+
+
+def _header_identifier(value: str) -> str:
+    separated = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", value)
+    return identifier(separated.lower())
+
+
+def response_model_names(operation: Operation) -> list[str]:
+    return [
+        response.result_annotation
+        for response in operation.responses
+        if response.result_annotation is not None
+    ]
 
 
 def _is_success_status(value: str) -> bool:

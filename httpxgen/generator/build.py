@@ -5,7 +5,11 @@ from httpxgen.generator.client import Layout, render_client, render_serializatio
 from httpxgen.generator.models import exported_model_names, render_models
 from httpxgen.generator.naming import class_name, identifier
 from httpxgen.generator.normalize import normalize_inline_schemas
-from httpxgen.generator.operations import read_operations, read_security_schemes
+from httpxgen.generator.operations import (
+    read_operations,
+    read_security_schemes,
+    response_model_names,
+)
 from httpxgen.generator.package import (
     render_client_package_init,
     render_package_init,
@@ -43,7 +47,7 @@ def generate_client(spec: OpenAPISpec, package_name: str) -> dict[str, str]:
             "exceptions.py": render_template(TemplateName.EXCEPTIONS),
             "http_methods.py": render_template(TemplateName.HTTP_METHODS),
             "serialization.py": render_serialization(read_security_schemes(spec)),
-            "__init__.py": render_package_init(schemas, client_name),
+            "__init__.py": render_package_init(schemas, client_name, operations),
         }
     )
 
@@ -93,7 +97,16 @@ def generate_workspace(
             shared_models=f"{shared_module}.models",
             shared_names=shared_names,
         )
-        models = sorted(exported_model_names({name: schemas[name] for name in defined}))
+        models = sorted(
+            [
+                *exported_model_names({name: schemas[name] for name in defined}),
+                *(
+                    name
+                    for operation in operations
+                    for name in response_model_names(operation)
+                ),
+            ]
+        )
         files[f"{module}/client.py"] = render_client(
             operations, schemas, client_name, layout
         )

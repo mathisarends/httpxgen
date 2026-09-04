@@ -64,8 +64,8 @@ zu falschen Typen oder fehlendem Verhalten führen.
 - [x] `oneOf` als „genau eine Variante“ validieren
 - [x] `allOf`-Property-Konflikte zwischen Basismodellen erkennen und mit
   Schema-Kontext melden
-- [ ] Response-Header als typisierte Daten verfügbar machen, ohne den einfachen
-  Body-Return für Standardfälle unhandlich zu machen.
+- [x] Response-Header als typisierte Daten verfügbar machen, ohne den einfachen
+  Body-Return für Standardfälle unhandlich zu machen
 - [ ] Default-Werte von referenzierten Enums als echte Enum-Member in
   Methodensignaturen rendern; derzeit ist der Laufzeitwert korrekt, aber der
   statische Default kann noch der rohe String sein.
@@ -74,6 +74,17 @@ zu falschen Typen oder fehlendem Verhalten führen.
 - [ ] Lokale `$ref`-Geschwister exakt nach OpenAPI 3.0 versus 3.1 behandeln.
 - [ ] Semantische Vorabvalidierung ausbauen: ungültige Discriminators,
   widersprüchliche Required-/Default-Angaben und ungültige Schema-Defaults.
+
+### Aktueller Fortsetzungspunkt
+
+Stand 4. September 2026: Bis einschließlich der typisierten Response-Header
+sind die Punkte oben implementiert, getestet, in README und Referenz-Spezifikation
+dokumentiert und in `preview/` sichtbar. Als Nächstes folgt isoliert das Rendern
+referenzierter Enum-Defaults als echte Enum-Member in Methodensignaturen. Danach
+folgen Namensraum-Kollisionen, versionsgenaue `$ref`-Geschwister und die übrige
+semantische Vorabvalidierung. Jeder dieser Schritte erhält weiterhin Tests,
+einen sichtbaren Preview-Fall soweit generierbarer Code betroffen ist, und einen
+eigenen Commit.
 
 ## Bewusst später / außerhalb des Kernumfangs
 

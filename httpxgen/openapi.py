@@ -29,12 +29,18 @@ class RequestBody(OpenAPIModel):
     content: dict[str, MediaType] = Field(default_factory=dict)
 
 
-class APIResponse(OpenAPIModel):
+class Reference(OpenAPIModel):
+    ref: str = Field(alias="$ref")
+
+
+class APIHeader(OpenAPIModel):
+    schema_: dict[str, Any] = Field(default_factory=dict, alias="schema")
     content: dict[str, MediaType] = Field(default_factory=dict)
 
 
-class Reference(OpenAPIModel):
-    ref: str = Field(alias="$ref")
+class APIResponse(OpenAPIModel):
+    content: dict[str, MediaType] = Field(default_factory=dict)
+    headers: dict[str, Reference | APIHeader] = Field(default_factory=dict)
 
 
 class APIParameter(OpenAPIModel):
@@ -79,6 +85,7 @@ class Components(OpenAPIModel):
         default_factory=dict, alias="requestBodies"
     )
     responses: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    headers: dict[str, dict[str, Any]] = Field(default_factory=dict)
     path_items: dict[str, dict[str, Any]] = Field(
         default_factory=dict, alias="pathItems"
     )

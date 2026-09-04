@@ -46,6 +46,17 @@ def render_client(
             *(item.annotation for op in operations for item in op.parameters),
             *(op.body_annotation or "" for op in operations),
             *(item.annotation for op in operations for item in op.responses),
+            *(
+                item.result_annotation or ""
+                for op in operations
+                for item in op.responses
+            ),
+            *(
+                header.annotation
+                for op in operations
+                for response in op.responses
+                for header in response.headers
+            ),
         ]
     )
     model_names = sorted(
@@ -59,6 +70,12 @@ def render_client(
                 query_model_name(operation)
                 for operation in operations
                 if query_parameters(operation)
+            ),
+            *(
+                response.result_annotation
+                for operation in operations
+                for response in operation.responses
+                if response.result_annotation is not None
             ),
         ]
     )
@@ -159,11 +176,20 @@ def _serialization_helpers(operations: Sequence[Operation]) -> list[str]:
 
 
 def _needs_type_adapter(operations: Sequence[Operation]) -> bool:
-    return any(operation.body for operation in operations) or any(
-        content.kind == "json" and content.model_annotation is None
-        for operation in operations
-        for response in operation.responses
-        for content in _response_contents(response)
+    return (
+        any(operation.body for operation in operations)
+        or any(
+            content.kind == "json" and content.model_annotation is None
+            for operation in operations
+            for response in operation.responses
+            for content in _response_contents(response)
+        )
+        or any(
+            header.annotation != "str"
+            for operation in operations
+            for response in operation.responses
+            for header in response.headers
+        )
     )
 
 
@@ -190,7 +216,11 @@ def _render_operation(operation: Operation) -> str:
             f"        content_type: Literal[{choices}] = "
             f"{string_literal(bodies[0].media_type)},\n"
         )
-    successes = [item.annotation for item in operation.responses if item.success]
+    successes = [
+        item.result_annotation or item.annotation
+        for item in operation.responses
+        if item.success
+    ]
     blocks = [
         _render_path(operation),
         _render_query(operation),
@@ -461,14 +491,16 @@ def _render_response_handling(responses: Sequence[Response]) -> str:
         contents = _response_contents(response)
         if len(contents) <= 1:
             expression = _response_expression(contents[0]) if contents else "None"
+            result = _response_result(response, expression, " " * 12)
             if response.success:
-                lines.append(f"            return {expression}\n")
+                lines.append(f"            return {result}\n")
                 continue
-            lines.append(f"            parsed_body = {expression}\n")
+            lines.append(f"            parsed_body = {result}\n")
         else:
             lines.extend(_render_content_response(contents))
+            result = _response_result(response, "parsed_body", " " * 12)
             if response.success:
-                lines.append("            return parsed_body\n")
+                lines.append(f"            return {result}\n")
                 continue
         if not response.success:
             lines.append(
@@ -479,6 +511,34 @@ def _render_response_handling(responses: Sequence[Response]) -> str:
                 )
             )
     return "".join(lines)
+
+
+def _response_result(response: Response, body: str, indent: str) -> str:
+    if response.result_annotation is None:
+        return body
+    nested = f"{indent}    "
+    lines = [f"{response.result_annotation}(", f"{nested}body={body},"]
+    for header in response.headers:
+        key = string_literal(header.wire_name)
+        if header.annotation == "str":
+            lines.append(f"{nested}{header.name}=response.headers.get({key}),")
+            continue
+        value = f"response.headers[{key}]"
+        if header.annotation.startswith("list["):
+            value += '.split(",")'
+        lines.extend(
+            [
+                f"{nested}{header.name}=(",
+                f"{nested}    TypeAdapter({header.annotation}).validate_python(",
+                f"{nested}        {value}",
+                f"{nested}    )",
+                f"{nested}    if {key} in response.headers",
+                f"{nested}    else None",
+                f"{nested}),",
+            ]
+        )
+    lines.append(f"{indent})")
+    return "\n".join(lines)
 
 
 def _render_content_response(contents: Sequence[ResponseContent]) -> list[str]:

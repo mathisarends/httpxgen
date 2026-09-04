@@ -411,6 +411,10 @@ normal, non-trivial API:
   raises `ApiError`; its validated `ChargeError` is available as
   `error.parsed_body`. Undocumented statuses also raise `ApiError`, with the
   original `httpx.Response` on `error.response`.
+- Responses with declared headers return a small operation-specific model whose
+  `body` field contains the usual validated value and whose remaining fields
+  contain optional typed headers. Responses without declared headers keep the
+  direct body return shown above.
 - The nested billing profile becomes a real generated model rather than
   `dict[str, Any]`. Unknown response fields are retained unless the schema says
   `additionalProperties: false`.
@@ -448,8 +452,8 @@ Pydantic models, enums, nullable values, discriminated unions, and practical
 `allOf` inheritance.
 
 Unsupported constructs fail generation where possible. Important remaining
-limitations are response-header return models, external references, streaming,
-callbacks/webhooks, automatic pagination, and a synchronous client.
+limitations are external references, streaming, callbacks/webhooks, automatic
+pagination, and a synchronous client.
 
 See [`MISSING_IMPL.md`](MISSING_IMPL.md) for the prioritized checklist and the
 test requirements for each future step.

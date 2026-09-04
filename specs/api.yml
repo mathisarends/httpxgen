@@ -212,6 +212,12 @@ paths:
       responses:
         "201":
           description: Charge created
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
           content:
             application/json:
               schema:
@@ -381,6 +387,13 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
+  headers:
+    RequestId:
+      description: Correlates this response with server-side logs.
+      schema:
+        type: string
+        format: uuid
 
   schemas:
     # ---- enums / const -------------------------------------------------

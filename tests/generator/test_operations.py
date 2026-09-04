@@ -315,6 +315,39 @@ def test_multiple_request_and_response_content_types_are_kept():
     assert operation.responses[0].annotation == "int | str"
 
 
+def test_response_headers_are_typed_and_named_as_a_result_model():
+    spec = _spec_with_operation(
+        {
+            "operationId": "getLimits",
+            "responses": {
+                "200": {
+                    "headers": {
+                        "X-Request-ID": {"$ref": "#/components/headers/RequestId"},
+                        "X-Remaining": {"schema": {"type": "integer"}},
+                        "X-RateLimit-Reset": {"schema": {"type": "integer"}},
+                    },
+                    "content": {"application/json": {"schema": {"type": "string"}}},
+                }
+            },
+        }
+    )
+    spec.components.headers["RequestId"] = {
+        "schema": {"type": "string", "format": "uuid"}
+    }
+
+    response = read_operations(spec)[0].responses[0]
+
+    assert response.result_annotation == "GetLimitsResult200"
+    assert [
+        (header.name, header.wire_name, header.annotation)
+        for header in response.headers
+    ] == [
+        ("x_request_id", "X-Request-ID", "UUID"),
+        ("x_remaining", "X-Remaining", "int"),
+        ("x_rate_limit_reset", "X-RateLimit-Reset", "int"),
+    ]
+
+
 def test_referenced_enum_defaults_use_enum_members():
     spec = OpenAPISpec.model_validate(
         {

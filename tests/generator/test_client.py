@@ -4,6 +4,7 @@ from httpxgen.generator.operations import (
     Operation,
     Parameter,
     Response,
+    ResponseHeader,
     SecurityScheme,
 )
 from httpxgen.openapi import HttpMethod
@@ -200,6 +201,40 @@ def test_render_client_imports_types_used_by_content_variants():
     )
 
     assert "from typing import Any, Literal, Self" in source
+
+
+def test_render_client_returns_typed_response_headers():
+    operation = Operation(
+        method=HttpMethod.GET,
+        path="/limits",
+        name="get_limits",
+        parameters=(),
+        body_annotation=None,
+        body_required=False,
+        responses=(
+            Response(
+                200,
+                "Limits",
+                "Limits",
+                headers=(
+                    ResponseHeader("request_id", "X-Request-ID", "UUID"),
+                    ResponseHeader("remaining", "X-Remaining", "int"),
+                ),
+                result_annotation="GetLimitsResult200",
+            ),
+        ),
+    )
+
+    source = render_client(
+        (operation,), {"Limits": {"type": "object"}}, "Client", _LAYOUT
+    )
+
+    assert ") -> GetLimitsResult200:" in source
+    assert "return GetLimitsResult200(" in source
+    assert "body=Limits.model_validate(response.json())," in source
+    assert "request_id=(" in source
+    assert "TypeAdapter(UUID).validate_python(" in source
+    assert 'response.headers["X-Remaining"]' in source
 
 
 def test_render_serialization_renders_the_security_schemes():

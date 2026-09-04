@@ -4,7 +4,12 @@ from typing import Any
 from httpxgen.generator.errors import GenerationError
 from httpxgen.generator.models import exported_model_names
 from httpxgen.generator.naming import string_literal
-from httpxgen.generator.operations import Operation, query_model_name, query_parameters
+from httpxgen.generator.operations import (
+    Operation,
+    query_model_name,
+    query_parameters,
+    response_model_names,
+)
 from httpxgen.generator.templates import TemplateName, render_template
 
 _RESERVED_NAMES = {
@@ -36,7 +41,10 @@ def validate_package_names(
         for operation in operations
         if query_parameters(operation)
     ]
-    generated_models = [*exported_models, *query_models]
+    response_models = [
+        name for operation in operations for name in response_model_names(operation)
+    ]
+    generated_models = [*exported_models, *query_models, *response_models]
     _check_no_name_collisions(generated_models, client_name)
     method_conflicts = sorted(
         _CLIENT_METHODS.intersection(operation.name for operation in operations)
@@ -48,9 +56,20 @@ def validate_package_names(
         )
 
 
-def render_package_init(schemas: Mapping[str, Any], client_name: str) -> str:
+def render_package_init(
+    schemas: Mapping[str, Any], client_name: str, operations: Sequence[Operation] = ()
+) -> str:
     """Render the __init__ of a self-contained single-client package."""
-    models = sorted(exported_model_names(schemas))
+    models = sorted(
+        [
+            *exported_model_names(schemas),
+            *(
+                name
+                for operation in operations
+                for name in response_model_names(operation)
+            ),
+        ]
+    )
     _check_no_name_collisions(models, client_name)
     imports = [
         f"from .client import {client_name}",

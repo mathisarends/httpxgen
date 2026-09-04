@@ -17,6 +17,7 @@ from preview.payments.models import (
     ChargePage,
     ChargeStatus,
     CreateChargeRequest,
+    CreateChargeResult201,
     Customer,
     CustomerProfileRequest,
     CustomerProfileResponse,
@@ -106,7 +107,7 @@ class PaymentsClient:
         body: CreateChargeRequest,
         *,
         timeout: float | None = None,
-    ) -> Charge:
+    ) -> CreateChargeResult201:
         path = "/charges"
 
         headers = dict(self._headers)
@@ -127,7 +128,23 @@ class PaymentsClient:
         )
 
         if response.status_code == 201:
-            return Charge.model_validate(response.json())
+            return CreateChargeResult201(
+                body=Charge.model_validate(response.json()),
+                x_request_id=(
+                    TypeAdapter(UUID).validate_python(
+                        response.headers["X-Request-ID"]
+                    )
+                    if "X-Request-ID" in response.headers
+                    else None
+                ),
+                x_rate_limit_remaining=(
+                    TypeAdapter(int).validate_python(
+                        response.headers["X-RateLimit-Remaining"]
+                    )
+                    if "X-RateLimit-Remaining" in response.headers
+                    else None
+                ),
+            )
         if response.status_code == 402:
             parsed_body = ChargeError.model_validate(response.json())
             raise ApiError(response.status_code, response.text, parsed_body, response)
