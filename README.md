@@ -393,39 +393,6 @@ client-check:
 	uvx httpxgen openapi.json src/payments --package-name payments --check
 ```
 
-## Details worth knowing
-
-- **Auth.** Security requirements become the `credentials` mapping passed to the
-  client. An operation with `security: []` stays public.
-- **Errors.** Every non-matching status raises `ApiError`. A documented error
-  schema is validated onto `error.parsed_body`, and the original
-  `httpx.Response` is always on `error.response`.
-- **Response headers.** Responses that declare headers return a small
-  operation-specific model with the validated payload on `body` and the typed
-  headers beside it. Everything else returns the body directly.
-- **Read-only / write-only.** A schema whose properties are split by direction
-  becomes two models — `UserRequest` without the read-only fields,
-  `UserResponse` without the write-only ones — so neither side has to supply
-  data it cannot provide.
-- **Content types.** An operation with several request media types gets a typed
-  `content_type` keyword and defaults to JSON (`+json` included). Responses are
-  decoded by their actual `Content-Type`; an undocumented one raises `ApiError`
-  rather than being guessed.
-- **Base URL.** Always passed explicitly — `servers` is never used as an
-  implicit network destination.
-- **Naming.** A schema component named `ApiError` is generated as
-  `ApiErrorModel` so it cannot collide with the exception. All generated names
-  are checked together before anything is rendered — across every tag in a
-  workspace — so a collision fails generation instead of silently dropping one
-  definition.
-- **Strictness.** Contradictory specs fail loudly: conflicting `allOf` property
-  definitions, invalid discriminators, and defaults that contradict their own
-  `type`, `enum`, `const`, or `required` flag all abort generation with the
-  offending component named.
-
-`specs/api.yml` in this repository is the executable reference for all of the
-above.
-
 ## Scope
 
 httpxgen targets ordinary OpenAPI 3.0 and 3.1 client specifications, not every
