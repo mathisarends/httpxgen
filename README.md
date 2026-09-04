@@ -407,6 +407,10 @@ normal, non-trivial API:
 - The nested billing profile becomes a real generated model rather than
   `dict[str, Any]`. Unknown response fields are retained unless the schema says
   `additionalProperties: false`.
+- Schemas containing `readOnly` or `writeOnly` properties are split where they
+  cross the HTTP boundary. For example, a shared `User` schema becomes
+  `UserRequest` without read-only fields and `UserResponse` without write-only
+  fields, so neither side requires data it cannot provide.
 - `oneOf` plus `discriminator` becomes a discriminated Pydantic union. Recursive
   object models and discriminator `mapping` values are supported.
 - The schema component named `ApiError` is generated as `ApiErrorModel` to avoid
@@ -423,8 +427,9 @@ httpxgen targets ordinary OpenAPI 3.0 and 3.1 client specifications, not every
 JSON Schema feature. It supports JSON/YAML input, local component references,
 path/query/header/cookie serialization, JSON request bodies, JSON/text/binary
 responses, numeric/default/status-range responses, typed error bodies, common
-security schemes, inline and recursive Pydantic models, enums, nullable values,
-discriminated unions, and practical `allOf` inheritance.
+security schemes, directional request/response models, inline and recursive
+Pydantic models, enums, nullable values, discriminated unions, and practical
+`allOf` inheritance.
 
 Unsupported constructs fail generation where possible. Important remaining
 limitations are exact non-discriminated `oneOf` semantics, form/multipart and

@@ -56,7 +56,7 @@ das erst zur Laufzeit sichtbar wird, braucht zusätzlich einen Test mit
 Diese Punkte treten in normalen produktiven Spezifikationen auf und können noch
 zu falschen Typen oder fehlendem Verhalten führen.
 
-- [ ] `readOnly` und `writeOnly` durch getrennte Request-/Response-Modelle
+- [x] `readOnly` und `writeOnly` durch getrennte Request-/Response-Modelle
   abbilden. Ein gemeinsames Modell kann derzeit auf einer Seite zu viel verlangen.
 - [ ] Form-, Multipart- und Binär-Request-Bodies wieder unterstützen. Aktuell
   bricht die Generierung dafür mit einer `GenerationError` ab.

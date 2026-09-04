@@ -90,6 +90,66 @@ def test_reference_siblings_follow_the_openapi_version():
     assert current.components.schemas["Alias"]["nullable"] is True
 
 
+def test_directional_models_are_applied_through_reusable_content_components():
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {
+                "/users": {
+                    "post": {
+                        "operationId": "createUser",
+                        "requestBody": {"$ref": "#/components/requestBodies/User"},
+                        "responses": {"201": {"$ref": "#/components/responses/User"}},
+                    }
+                }
+            },
+            "components": {
+                "schemas": {
+                    "User": {
+                        "type": "object",
+                        "required": ["id", "password"],
+                        "properties": {
+                            "id": {"type": "string", "readOnly": True},
+                            "password": {"type": "string", "writeOnly": True},
+                        },
+                    }
+                },
+                "requestBodies": {
+                    "User": {
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/User"}
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "User": {
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/User"}
+                            }
+                        }
+                    }
+                },
+            },
+        }
+    )
+
+    normalized = normalize_inline_schemas(spec)
+    request_schema = normalized.components.request_bodies["User"]["content"][
+        "application/json"
+    ]["schema"]
+    response_schema = normalized.components.responses["User"]["content"][
+        "application/json"
+    ]["schema"]
+
+    assert request_schema == {"$ref": "#/components/schemas/UserRequest"}
+    assert response_schema == {"$ref": "#/components/schemas/UserResponse"}
+    assert normalized.components.schemas["UserRequest"]["required"] == ["password"]
+    assert normalized.components.schemas["UserResponse"]["required"] == ["id"]
+
+
 @pytest.mark.parametrize(
     ("schema", "message"),
     [
