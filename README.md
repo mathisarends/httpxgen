@@ -432,6 +432,10 @@ normal, non-trivial API:
   with the component, property, and both source schemas in the error.
 - The schema component named `ApiError` is generated as `ApiErrorModel` to avoid
   colliding with the runtime exception.
+- A `default` on a property or parameter that references an enum component is
+  rendered as the enum member itself, so `CreateInvoiceRequest.status` defaults
+  to `InvoiceStatus.DRAFT` rather than to the bare string `"draft"`. The value
+  sent over the wire is unchanged.
 
 When an operation offers several request content types, its method exposes a
 typed `content_type` keyword and defaults to JSON (including `+json`) when

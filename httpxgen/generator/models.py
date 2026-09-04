@@ -63,7 +63,9 @@ def render_models(
             if union in defined
         ),
         *(
-            _render_component(name, schemas[name], discriminator_enums_by_field)
+            _render_component(
+                name, schemas[name], discriminator_enums_by_field, schemas
+            )
             for name in ordered_schemas(schemas)
             if name in defined
         ),
@@ -259,18 +261,41 @@ def _discriminator_annotation(
     return f"Literal[\n{rendered_members}\n    ]"
 
 
-def _default_source(value: Any, enum: _DiscriminatorEnum | None) -> str:
+def _default_source(
+    value: Any,
+    enum: _DiscriminatorEnum | None,
+    schema: Mapping[str, Any],
+    schemas: Mapping[str, Any],
+) -> str:
     if enum is not None and isinstance(value, str) and value in enum.values:
         return f"{enum.name}.{enum_member(value)}"
+    referenced = _referenced_enum_member(value, schema, schemas)
+    if referenced is not None:
+        return referenced
     if isinstance(value, str):
         return string_literal(value)
     return repr(value)
+
+
+def _referenced_enum_member(
+    value: Any, schema: Mapping[str, Any], schemas: Mapping[str, Any]
+) -> str | None:
+    """Render `value` as a member of the enum component `schema` references."""
+    reference = schema.get("$ref")
+    if not isinstance(value, str) or not isinstance(reference, str):
+        return None
+    name = reference.rsplit("/", 1)[-1].replace("~1", "/").replace("~0", "~")
+    target = schemas.get(name)
+    if not isinstance(target, Mapping) or value not in target.get("enum", []):
+        return None
+    return f"{class_name(name)}.{enum_member(value)}"
 
 
 def _render_component(
     name: str,
     schema: Mapping[str, Any],
     discriminator_enums_by_field: Mapping[tuple[str, str], _DiscriminatorEnum],
+    schemas: Mapping[str, Any],
 ) -> str:
     component_class_name = class_name(name)
     enum = schema.get("enum")
@@ -351,6 +376,7 @@ def _render_component(
             required=wire_name in required,
             schema=field_schema,
             discriminator_enum=discriminator_enums_by_field.get((name, wire_name)),
+            schemas=schemas,
         )
         for wire_name, field_schema in properties.items()
     ]
@@ -378,6 +404,7 @@ def _render_field(
     required: bool,
     schema: Mapping[str, Any],
     discriminator_enum: _DiscriminatorEnum | None = None,
+    schemas: Mapping[str, Any] | None = None,
 ) -> str:
     annotation = (
         _discriminator_annotation(schema, discriminator_enum)
@@ -405,7 +432,9 @@ def _render_field(
 
     default = schema.get("default", _MISSING)
     if default is not _MISSING:
-        default_source = _default_source(default, discriminator_enum)
+        default_source = _default_source(
+            default, discriminator_enum, schema, schemas or {}
+        )
     elif required:
         default_source = None
     else:

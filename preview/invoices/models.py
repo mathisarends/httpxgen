@@ -21,19 +21,20 @@ class InvoiceLineItem(BaseModel):
     amount: Money
 
 
-class CreateInvoiceRequest(BaseModel):
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-
-    customer_id: UUID
-    line_items: list[InvoiceLineItem] = Field(min_length=1)
-    metadata: dict[str, str] = None
-
-
 class InvoiceStatus(StrEnum):
     DRAFT = "draft"
     SENT = "sent"
     PAID = "paid"
     VOID = "void"
+
+
+class CreateInvoiceRequest(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    customer_id: UUID
+    line_items: list[InvoiceLineItem] = Field(min_length=1)
+    status: InvoiceStatus = InvoiceStatus.DRAFT
+    metadata: dict[str, str] = None
 
 
 class Invoice(BaseEntity):

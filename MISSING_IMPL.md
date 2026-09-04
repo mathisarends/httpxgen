@@ -66,7 +66,7 @@ zu falschen Typen oder fehlendem Verhalten führen.
   Schema-Kontext melden
 - [x] Response-Header als typisierte Daten verfügbar machen, ohne den einfachen
   Body-Return für Standardfälle unhandlich zu machen
-- [ ] Default-Werte von referenzierten Enums als echte Enum-Member in
+- [x] Default-Werte von referenzierten Enums als echte Enum-Member in
   Methodensignaturen rendern; derzeit ist der Laufzeitwert korrekt, aber der
   statische Default kann noch der rohe String sein.
 - [ ] Alle Komponenten-Namensräume vor der Generierung gemeinsam auf Kollisionen

@@ -129,3 +129,62 @@ def test_exported_model_names_include_generated_discriminator_enums(
 
     assert "PaymentMethodType" in names
     assert "PaymentMethod" in names
+
+
+def test_render_models_renders_referenced_enum_defaults_as_enum_members():
+    source = render_models(
+        {
+            "Status": {"type": "string", "enum": ["open", "closed"]},
+            "Charge": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "$ref": "#/components/schemas/Status",
+                        "default": "open",
+                    },
+                },
+            },
+        }
+    )
+
+    assert "status: Status = Status.OPEN" in source
+
+
+def test_render_models_keeps_plain_defaults_for_non_enum_references():
+    source = render_models(
+        {
+            "Label": {"type": "string"},
+            "Charge": {
+                "type": "object",
+                "properties": {
+                    "label": {
+                        "$ref": "#/components/schemas/Label",
+                        "default": "none",
+                    },
+                    "retries": {"type": "integer", "default": 3},
+                },
+            },
+        }
+    )
+
+    assert 'label: Label = "none"' in source
+    assert "retries: int = 3" in source
+
+
+def test_render_models_ignores_enum_defaults_that_are_not_members():
+    source = render_models(
+        {
+            "Status": {"type": "string", "enum": ["open", "closed"]},
+            "Charge": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "$ref": "#/components/schemas/Status",
+                        "default": "pending",
+                    },
+                },
+            },
+        }
+    )
+
+    assert 'status: Status = "pending"' in source

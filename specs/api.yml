@@ -725,6 +725,9 @@ components:
           minItems: 1
           items:
             $ref: "#/components/schemas/InvoiceLineItem"
+        status:
+          $ref: "#/components/schemas/InvoiceStatus"
+          default: draft
         metadata:
           type: object
           additionalProperties:
