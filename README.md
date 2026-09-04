@@ -432,6 +432,11 @@ normal, non-trivial API:
   with the component, property, and both source schemas in the error.
 - The schema component named `ApiError` is generated as `ApiErrorModel` to avoid
   colliding with the runtime exception.
+- Every generated name — component classes, discriminator enums, synthetic
+  inline models, query models, response models, and the client classes — is
+  checked together before any module is rendered. In a workspace this spans all
+  tags at once, so two tags binding the same name to different definitions fail
+  generation instead of silently re-exporting only one from the root package.
 - A `default` on a property or parameter that references an enum component is
   rendered as the enum member itself, so `CreateInvoiceRequest.status` defaults
   to `InvoiceStatus.DRAFT` rather than to the bare string `"draft"`. The value

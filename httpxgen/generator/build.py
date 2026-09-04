@@ -15,6 +15,7 @@ from httpxgen.generator.package import (
     render_package_init,
     render_workspace_init,
     validate_package_names,
+    validate_workspace_names,
 )
 from httpxgen.generator.templates import (
     GENERATED_HEADER,
@@ -65,6 +66,14 @@ def generate_workspace(
         filter_operations_by_tags(spec, tags, schema_tags=schema_tags)
     )
     schemas = spec.components.schemas
+    operations_by_tag = {
+        tag: read_operations(_only(spec, tag, tags, schema_tags)) for tag in tags
+    }
+    validate_workspace_names(
+        schemas,
+        operations_by_tag,
+        [f"{class_name(identifier(tag))}Client" for tag in tags],
+    )
     owners = _schema_owners(spec, tags)
     shared_schemas = {
         name: schema for name, schema in schemas.items() if owners[name] is None
@@ -86,7 +95,7 @@ def generate_workspace(
     for tag in tags:
         module = identifier(tag)
         client_name = f"{class_name(module)}Client"
-        operations = read_operations(_only(spec, tag, tags, schema_tags))
+        operations = operations_by_tag[tag]
         validate_package_names(schemas, operations, client_name)
         defined = {name for name, owner in owners.items() if owner == tag}
         layout = Layout(

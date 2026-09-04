@@ -274,3 +274,79 @@ def test_generate_workspace_shares_support_modules_between_tag_packages(
     assert "from .invoices import InvoicesClient" in files["__init__.py"]
     assert "from .payments import PaymentsClient" in files["__init__.py"]
     assert "from .shared import ApiError" in files["__init__.py"]
+
+
+def _two_tag_spec(first_operation_id: str, second_operation_id: str) -> OpenAPISpec:
+    def operation(operation_id: str, tag: str) -> dict:
+        return {
+            "operationId": operation_id,
+            "tags": [tag],
+            "responses": {
+                "200": {
+                    "description": "ok",
+                    "headers": {"X-Request-Id": {"schema": {"type": "string"}}},
+                    "content": {"application/json": {"schema": {"type": "string"}}},
+                }
+            },
+        }
+
+    return OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {
+                "/a": {"get": operation(first_operation_id, "alpha")},
+                "/b": {"get": operation(second_operation_id, "beta")},
+            },
+        }
+    )
+
+
+def test_generate_workspace_rejects_response_models_colliding_across_tags():
+    spec = _two_tag_spec("getThing", "get_thing")
+
+    with pytest.raises(GenerationError) as error:
+        generate_workspace(spec, ["alpha", "beta"], "api")
+
+    assert "GetThingResult200" in str(error.value)
+    assert "collide across the workspace" in str(error.value)
+
+
+def test_generate_workspace_allows_distinct_response_models_per_tag():
+    spec = _two_tag_spec("getThing", "getOther")
+
+    files = generate_workspace(spec, ["alpha", "beta"], "api")
+
+    assert "class GetThingResult200(BaseModel):" in files["alpha/models.py"]
+    assert "class GetOtherResult200(BaseModel):" in files["beta/models.py"]
+
+
+def test_generate_workspace_allows_one_operation_shared_by_several_tags():
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {
+                "/a": {
+                    "get": {
+                        "operationId": "getThing",
+                        "tags": ["alpha", "beta"],
+                        "responses": {
+                            "200": {
+                                "description": "ok",
+                                "headers": {
+                                    "X-Request-Id": {"schema": {"type": "string"}}
+                                },
+                                "content": {
+                                    "application/json": {"schema": {"type": "string"}}
+                                },
+                            }
+                        },
+                    }
+                }
+            },
+        }
+    )
+
+    files = generate_workspace(spec, ["alpha", "beta"], "api")
+
+    assert "class GetThingResult200(BaseModel):" in files["alpha/models.py"]
+    assert "class GetThingResult200(BaseModel):" in files["beta/models.py"]

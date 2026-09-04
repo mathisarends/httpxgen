@@ -69,7 +69,7 @@ zu falschen Typen oder fehlendem Verhalten führen.
 - [x] Default-Werte von referenzierten Enums als echte Enum-Member in
   Methodensignaturen rendern; derzeit ist der Laufzeitwert korrekt, aber der
   statische Default kann noch der rohe String sein.
-- [ ] Alle Komponenten-Namensräume vor der Generierung gemeinsam auf Kollisionen
+- [x] Alle Komponenten-Namensräume vor der Generierung gemeinsam auf Kollisionen
   prüfen, einschließlich synthetischer Inline- und Query-Modelle.
 - [ ] Lokale `$ref`-Geschwister exakt nach OpenAPI 3.0 versus 3.1 behandeln.
 - [ ] Semantische Vorabvalidierung ausbauen: ungültige Discriminators,

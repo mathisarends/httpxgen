@@ -91,12 +91,20 @@ def render_models(
 
 
 def exported_model_names(schemas: Mapping[str, Any]) -> list[str]:
-    discriminator_names = [
-        enum.name for enum in dict.fromkeys(_discriminator_enums(schemas)[1].values())
-    ]
+    return [name for name, _ in exported_model_sources(schemas)]
+
+
+def exported_model_sources(schemas: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """Pair every exported model name with the schema construct that defines it."""
+    discriminators: dict[str, str] = {}
+    for union, enum in _discriminator_enums(schemas)[1].items():
+        discriminators.setdefault(enum.name, f"discriminator enum of {union}")
     return [
-        *discriminator_names,
-        *(class_name(name) for name in ordered_schemas(schemas)),
+        *discriminators.items(),
+        *(
+            (class_name(name), f"component schema {name}")
+            for name in ordered_schemas(schemas)
+        ),
     ]
 
 
