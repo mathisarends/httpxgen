@@ -418,6 +418,9 @@ normal, non-trivial API:
   fields, so neither side requires data it cannot provide.
 - `oneOf` plus `discriminator` becomes a discriminated Pydantic union. Recursive
   object models and discriminator `mapping` values are supported.
+- Non-discriminated `oneOf` aliases include an explicit Pydantic validator and
+  reject values matching zero or multiple variants; `anyOf` remains a regular
+  union.
 - The schema component named `ApiError` is generated as `ApiErrorModel` to avoid
   colliding with the runtime exception.
 
@@ -440,9 +443,8 @@ Pydantic models, enums, nullable values, discriminated unions, and practical
 `allOf` inheritance.
 
 Unsupported constructs fail generation where possible. Important remaining
-limitations are exact non-discriminated `oneOf` semantics, response-header
-return models, external references, streaming, callbacks/webhooks, automatic
-pagination, and a synchronous client.
+limitations are response-header return models, external references, streaming,
+callbacks/webhooks, automatic pagination, and a synchronous client.
 
 See [`MISSING_IMPL.md`](MISSING_IMPL.md) for the prioritized checklist and the
 test requirements for each future step.

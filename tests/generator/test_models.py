@@ -42,6 +42,19 @@ def test_render_models_supports_numeric_component_enums_as_literals():
     assert "Status = Literal[1, 2]" in source
 
 
+def test_render_models_adds_exact_validation_only_to_one_of():
+    source = render_models(
+        {
+            "TextOrNumber": {"oneOf": [{"type": "string"}, {"type": "integer"}]},
+            "LooseValue": {"anyOf": [{"type": "string"}, {"type": "integer"}]},
+        }
+    )
+
+    assert "def _one_of(*variants: Any) -> BeforeValidator:" in source
+    assert "TextOrNumber = Annotated[str | int, _one_of(str, int)]" in source
+    assert "LooseValue = str | int" in source
+
+
 def test_render_models_rejects_normalized_property_and_enum_collisions():
     with pytest.raises(GenerationError, match="property names collide"):
         render_models(

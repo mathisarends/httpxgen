@@ -75,6 +75,8 @@ def render_models(
     body = "\n\n\n".join(block for block in blocks if block)
     if not body:
         body = "# This API does not define component schemas."
+    elif "_one_of(" in body:
+        body = f"{_ONE_OF_VALIDATOR}\n\n\n{body}"
     imports = _render_model_imports(body, external)
     return render_template(TemplateName.MODELS, imports=imports, body=body)
 
@@ -123,24 +125,41 @@ def _render_model_imports(
     lines: list[str] = []
     datetime_names = used_names(body, ("date", "datetime"))
     typing_names = used_names(body, ("Annotated", "Any", "Literal"))
-    pydantic_names = used_names(body, ("BaseModel", "ConfigDict", "Field"))
+    pydantic_names = used_names(
+        body,
+        (
+            "BaseModel",
+            "BeforeValidator",
+            "ConfigDict",
+            "Field",
+            "TypeAdapter",
+            "ValidationError",
+        ),
+    )
     if datetime_names:
         lines.append(f"from datetime import {', '.join(datetime_names)}")
     if "StrEnum" in body:
         lines.append("from enum import StrEnum")
     if typing_names:
-        lines.append(f"from typing import {', '.join(typing_names)}")
+        lines.extend(_render_import("from typing import", typing_names))
     if "UUID" in body:
         lines.append("from uuid import UUID")
     if pydantic_names:
         if lines:
             lines.append("")
-        lines.append(f"from pydantic import {', '.join(pydantic_names)}")
+        lines.extend(_render_import("from pydantic import", pydantic_names))
     for module, names in sorted(external):
         used = used_names(body, tuple(names))
         if used:
             lines.extend(["", f"from {module} import {', '.join(used)}"])
     return "\n".join(lines)
+
+
+def _render_import(prefix: str, names: Sequence[str]) -> list[str]:
+    source = f"{prefix} {', '.join(names)}"
+    if len(source) <= 88:
+        return [source]
+    return [f"{prefix} (", *(f"    {name}," for name in names), ")"]
 
 
 def _discriminator_enums(
@@ -272,6 +291,27 @@ def _render_component(
                 f"    Field(discriminator={string_literal(discriminator)}),\n"
                 "]"
             )
+        if "oneOf" in schema:
+            annotation = schema_type(schema)
+            rendered = f"{component_class_name} = {annotation}"
+            if len(rendered) <= 88:
+                return rendered
+            variant_lines = "\n".join(
+                f"        {schema_type(item)}," for item in variants
+            )
+            rendered_union = (
+                union
+                if len(f"    {union},") <= 88
+                else union.replace(" | ", "\n    | ")
+            )
+            return (
+                f"{component_class_name} = Annotated[\n"
+                f"    {rendered_union},\n"
+                "    _one_of(\n"
+                f"{variant_lines}\n"
+                "    ),\n"
+                "]"
+            )
         return f"{component_class_name} = {union}"
 
     bases, own_schema = split_all_of(schema)
@@ -373,3 +413,23 @@ def _render_field(
     if len(rendered) + 4 <= 88:
         return rendered
     return f"{field_name}: {annotation} = Field(\n        {arguments}\n    )"
+
+
+_ONE_OF_VALIDATOR = """\
+def _one_of(*variants: Any) -> BeforeValidator:
+    adapters = [TypeAdapter(variant) for variant in variants]
+
+    def validate(value: Any) -> Any:
+        matches = 0
+        for adapter in adapters:
+            try:
+                adapter.validate_python(value)
+            except ValidationError:
+                continue
+            matches += 1
+        if matches != 1:
+            raise ValueError(f"expected exactly one oneOf variant, matched {matches}")
+        return value
+
+    return BeforeValidator(validate)
+""".rstrip()

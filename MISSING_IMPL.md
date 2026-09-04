@@ -61,8 +61,7 @@ zu falschen Typen oder fehlendem Verhalten führen.
 - [x] Form-, Multipart- und Binär-Request-Bodies unterstützen
 - [x] Mehrere Request-/Response-Content-Types derselben Operation explizit
   modellieren
-- [ ] `oneOf` als „genau eine Variante“ validieren. Ohne Discriminator verhält
-  sich die erzeugte Pydantic-Union derzeit näher an `anyOf`.
+- [x] `oneOf` als „genau eine Variante“ validieren
 - [ ] `allOf`-Property-Konflikte zwischen Basismodellen erkennen und mit
   Schema-Kontext melden.
 - [ ] Response-Header als typisierte Daten verfügbar machen, ohne den einfachen

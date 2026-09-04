@@ -28,6 +28,9 @@ from .payments.models import (
     Customer,
     CustomerPart2BillingProfile,
     PaymentMethod,
+    PaymentMethodFingerprintReference,
+    PaymentMethodIdReference,
+    PaymentMethodReference,
     PaymentMethodType,
 )
 from .shared import ApiError
@@ -59,6 +62,9 @@ __all__ = [
     "InvoicesClient",
     "Money",
     "PaymentMethod",
+    "PaymentMethodFingerprintReference",
+    "PaymentMethodIdReference",
+    "PaymentMethodReference",
     "PaymentMethodType",
     "PaymentsClient",
 ]

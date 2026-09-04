@@ -13,7 +13,11 @@ def schema_type(schema: Mapping[str, Any]) -> str:
 
     variants = schema.get("oneOf") or schema.get("anyOf")
     if variants:
-        annotation = " | ".join(schema_type(item) for item in variants)
+        variant_types = [schema_type(item) for item in variants]
+        annotation = " | ".join(variant_types)
+        if "oneOf" in schema and not schema.get("discriminator"):
+            adapters = ", ".join(variant_types)
+            annotation = f"Annotated[{annotation}, _one_of({adapters})]"
         if schema.get("nullable") is True and "None" not in annotation:
             annotation += " | None"
         return annotation

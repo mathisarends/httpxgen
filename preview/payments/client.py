@@ -20,6 +20,7 @@ from preview.payments.models import (
     Customer,
     ListChargesParams,
     PaymentMethod,
+    PaymentMethodReference,
 )
 from preview.shared import ApiError, apply_security, serialize_path, serialize_query
 from preview.shared.models import ApiErrorModel
@@ -202,6 +203,36 @@ class PaymentsClient:
         )
 
         if response.status_code == 201:
+            return TypeAdapter(PaymentMethod).validate_python(response.json())
+
+        raise ApiError(response.status_code, response.text, response=response)
+
+    async def lookup_payment_method(
+        self,
+        body: PaymentMethodReference,
+        *,
+        timeout: float | None = None,
+    ) -> PaymentMethod:
+        path = "/payment-methods/lookup"
+
+        headers = dict(self._headers)
+        headers.setdefault("Accept", "application/json")
+
+        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+
+        json_body = TypeAdapter(PaymentMethodReference).dump_python(
+            body, mode="json", by_alias=True, exclude_none=True
+        )
+
+        response = await self._client.request(
+            method="POST",
+            url=f"{self._base_url}{path}",
+            headers=headers,
+            json=json_body,
+            timeout=self._timeout if timeout is None else timeout,
+        )
+
+        if response.status_code == 200:
             return TypeAdapter(PaymentMethod).validate_python(response.json())
 
         raise ApiError(response.status_code, response.text, response=response)

@@ -126,6 +126,57 @@ def test_generate_client_supports_recursive_and_mapped_discriminator_models(tmp_
             del sys.modules[module_name]
 
 
+def test_generated_one_of_requires_exactly_one_matching_variant(tmp_path):
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {},
+            "components": {
+                "schemas": {
+                    "ByName": {
+                        "type": "object",
+                        "required": ["name"],
+                        "properties": {"name": {"type": "string"}},
+                    },
+                    "ById": {
+                        "type": "object",
+                        "required": ["id"],
+                        "properties": {"id": {"type": "integer"}},
+                    },
+                    "Lookup": {
+                        "oneOf": [
+                            {"$ref": "#/components/schemas/ByName"},
+                            {"$ref": "#/components/schemas/ById"},
+                        ]
+                    },
+                }
+            },
+        }
+    )
+
+    write_client(spec=spec, package_dir=tmp_path / "lookup", package_name="lookup")
+
+    sys.path.insert(0, str(tmp_path))
+    try:
+        package = importlib.import_module("lookup")
+        from pydantic import TypeAdapter, ValidationError
+
+        adapter = TypeAdapter(package.Lookup)
+        assert adapter.validate_python({"name": "Ada"}).name == "Ada"
+        with pytest.raises(ValidationError, match="matched 2"):
+            adapter.validate_python({"name": "Ada", "id": 1})
+        with pytest.raises(ValidationError, match="matched 0"):
+            adapter.validate_python({"active": True})
+    finally:
+        sys.path.remove(str(tmp_path))
+        for module_name in [
+            name
+            for name in sys.modules
+            if name == "lookup" or name.startswith("lookup.")
+        ]:
+            del sys.modules[module_name]
+
+
 def test_generate_client_rejects_an_unresolved_schema_reference():
     spec = OpenAPISpec.model_validate(
         {

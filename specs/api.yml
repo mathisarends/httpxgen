@@ -48,6 +48,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/PaymentMethod"
 
+  /payment-methods/lookup:
+    post:
+      operationId: lookupPaymentMethod
+      summary: Find a payment method by one of two supported references
+      tags: [payments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentMethodReference"
+      responses:
+        "200":
+          description: Matching payment method
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentMethod"
+
   /customers/{customerId}:
     get:
       operationId: getCustomer
@@ -305,6 +324,26 @@ components:
         mapping:
           card: "#/components/schemas/CardPaymentMethod"
           bank_transfer: "#/components/schemas/BankTransferPaymentMethod"
+
+    # ---- exact non-discriminated oneOf ----------------------------------
+    PaymentMethodIdReference:
+      type: object
+      required: [payment_method_id]
+      properties:
+        payment_method_id:
+          type: string
+
+    PaymentMethodFingerprintReference:
+      type: object
+      required: [fingerprint]
+      properties:
+        fingerprint:
+          type: string
+
+    PaymentMethodReference:
+      oneOf:
+        - $ref: "#/components/schemas/PaymentMethodIdReference"
+        - $ref: "#/components/schemas/PaymentMethodFingerprintReference"
 
     # ---- array of a *second*, independent discriminated union ----------
     ChargeCreatedEvent:

@@ -20,6 +20,9 @@ from .models import (
     Customer,
     CustomerPart2BillingProfile,
     PaymentMethod,
+    PaymentMethodFingerprintReference,
+    PaymentMethodIdReference,
+    PaymentMethodReference,
     PaymentMethodType,
 )
 
@@ -39,6 +42,9 @@ __all__ = [
     "Customer",
     "CustomerPart2BillingProfile",
     "PaymentMethod",
+    "PaymentMethodFingerprintReference",
+    "PaymentMethodIdReference",
+    "PaymentMethodReference",
     "PaymentMethodType",
     "PaymentsClient",
 ]

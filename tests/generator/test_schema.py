@@ -21,8 +21,9 @@ from httpxgen.generator.schema import (
         ({"enum": ["open", "closed"]}, 'Literal["open", "closed"]'),
         (
             {"oneOf": [{"type": "string"}, {"type": "integer"}]},
-            "str | int",
+            "Annotated[str | int, _one_of(str, int)]",
         ),
+        ({"anyOf": [{"type": "string"}, {"type": "integer"}]}, "str | int"),
         (
             {"type": "object", "additionalProperties": {"type": "boolean"}},
             "dict[str, bool]",

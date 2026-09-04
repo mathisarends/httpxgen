@@ -7,12 +7,37 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+)
 
 from preview.shared.models import BaseEntity, Money
+
+
+def _one_of(*variants: Any) -> BeforeValidator:
+    adapters = [TypeAdapter(variant) for variant in variants]
+
+    def validate(value: Any) -> Any:
+        matches = 0
+        for adapter in adapters:
+            try:
+                adapter.validate_python(value)
+            except ValidationError:
+                continue
+            matches += 1
+        if matches != 1:
+            raise ValueError(f"expected exactly one oneOf variant, matched {matches}")
+        return value
+
+    return BeforeValidator(validate)
 
 
 class PaymentMethodType(StrEnum):
@@ -137,6 +162,27 @@ class Customer(BaseEntity):
     email: str
     billing_profile: CustomerPart2BillingProfile
     metadata: dict[str, str] = None
+
+
+class PaymentMethodFingerprintReference(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    fingerprint: str
+
+
+class PaymentMethodIdReference(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    payment_method_id: str
+
+
+PaymentMethodReference = Annotated[
+    PaymentMethodIdReference | PaymentMethodFingerprintReference,
+    _one_of(
+        PaymentMethodIdReference,
+        PaymentMethodFingerprintReference,
+    ),
+]
 
 
 class ListChargesParams(BaseModel):
