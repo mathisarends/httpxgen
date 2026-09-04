@@ -20,9 +20,7 @@ def test_render_package_init_exports_the_client_error_and_models():
     assert '    "HttpMethods",' in source
 
 
-@pytest.mark.parametrize(
-    "schema_name", ["ApiError", "HttpMethods", "PaymentsClient"]
-)
+@pytest.mark.parametrize("schema_name", ["ApiError", "HttpMethods", "PaymentsClient"])
 def test_render_package_init_rejects_reserved_model_names(schema_name):
     with pytest.raises(GenerationError, match=schema_name):
         render_package_init({schema_name: {"type": "object"}}, "PaymentsClient")

@@ -46,7 +46,7 @@ class ApiError(Exception):
         self.response = response
 '''
 
-_HTTP_METHODS = '''\
+_HTTP_METHODS = """\
 from enum import StrEnum
 
 
@@ -59,7 +59,7 @@ class HttpMethods(StrEnum):
     HEAD = "HEAD"
     PATCH = "PATCH"
     TRACE = "TRACE"
-'''
+"""
 
 _SERIALIZATION = """\
 from base64 import b64encode
