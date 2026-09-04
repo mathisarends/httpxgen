@@ -10,22 +10,18 @@ from uuid import UUID
 import httpx
 from pydantic import TypeAdapter
 
-from preview.payments.models import (
-    Charge,
-    ChargeError,
-    ChargeEvent,
-    ChargePage,
-    ChargeStatus,
-    CreateChargeRequest,
-    Customer,
-    ListChargesParams,
-    PaymentMethod,
+from preview.invoices.models import (
+    CreateInvoiceRequest,
+    Invoice,
+    InvoicePage,
+    InvoiceStatus,
+    ListInvoicesParams,
 )
 from preview.shared import ApiError, apply_security, serialize_path, serialize_query
 from preview.shared.models import ApiErrorModel
 
 
-class PaymentsClient:
+class InvoicesClient:
     def __init__(
         self,
         client: httpx.AsyncClient,
@@ -50,17 +46,17 @@ class PaymentsClient:
     async def __aexit__(self, *exc_info: object) -> None:
         await self.aclose()
 
-    async def list_charges(
+    async def list_invoices(
         self,
-        status: ChargeStatus | None = None,
+        status: InvoiceStatus | None = None,
         cursor: str | None = None,
         page_size: int = 25,
         *,
         timeout: float | None = None,
-    ) -> ChargePage:
-        path = "/charges"
+    ) -> InvoicePage:
+        path = "/invoices"
 
-        params = ListChargesParams(
+        params = ListInvoicesParams(
             status=status,
             cursor=cursor,
             page_size=page_size,
@@ -86,24 +82,24 @@ class PaymentsClient:
         )
 
         if response.status_code == 200:
-            return ChargePage.model_validate(response.json())
+            return InvoicePage.model_validate(response.json())
 
         raise ApiError(response.status_code, response.text, response=response)
 
-    async def create_charge(
+    async def create_invoice(
         self,
-        body: CreateChargeRequest,
+        body: CreateInvoiceRequest,
         *,
         timeout: float | None = None,
-    ) -> Charge:
-        path = "/charges"
+    ) -> Invoice:
+        path = "/invoices"
 
         headers = dict(self._headers)
         headers.setdefault("Accept", "application/json")
 
         apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        json_body = TypeAdapter(CreateChargeRequest).dump_python(
+        json_body = TypeAdapter(CreateInvoiceRequest).dump_python(
             body, mode="json", by_alias=True, exclude_none=True
         )
 
@@ -116,21 +112,21 @@ class PaymentsClient:
         )
 
         if response.status_code == 201:
-            return Charge.model_validate(response.json())
-        if response.status_code == 402:
-            parsed_body = ChargeError.model_validate(response.json())
+            return Invoice.model_validate(response.json())
+        if response.status_code == 422:
+            parsed_body = ApiErrorModel.model_validate(response.json())
             raise ApiError(response.status_code, response.text, parsed_body, response)
 
         raise ApiError(response.status_code, response.text, response=response)
 
-    async def list_charge_events(
+    async def get_invoice(
         self,
-        charge_id: str,
+        invoice_id: UUID,
         *,
         timeout: float | None = None,
-    ) -> list[ChargeEvent]:
-        path = "/charges/{chargeId}/events"
-        path = path.replace("{chargeId}", serialize_path("chargeId", charge_id))
+    ) -> Invoice:
+        path = "/invoices/{invoiceId}"
+        path = path.replace("{invoiceId}", serialize_path("invoiceId", invoice_id))
 
         headers = dict(self._headers)
         headers.setdefault("Accept", "application/json")
@@ -145,63 +141,38 @@ class PaymentsClient:
         )
 
         if response.status_code == 200:
-            return TypeAdapter(list[ChargeEvent]).validate_python(response.json())
-
-        raise ApiError(response.status_code, response.text, response=response)
-
-    async def get_customer(
-        self,
-        customer_id: UUID,
-        *,
-        timeout: float | None = None,
-    ) -> Customer:
-        path = "/customers/{customerId}"
-        path = path.replace("{customerId}", serialize_path("customerId", customer_id))
-
-        headers = dict(self._headers)
-        headers.setdefault("Accept", "application/json")
-
-        response = await self._client.request(
-            method="GET",
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            timeout=self._timeout if timeout is None else timeout,
-        )
-
-        if response.status_code == 200:
-            return Customer.model_validate(response.json())
+            return Invoice.model_validate(response.json())
         if response.status_code == 404:
             parsed_body = ApiErrorModel.model_validate(response.json())
             raise ApiError(response.status_code, response.text, parsed_body, response)
 
         raise ApiError(response.status_code, response.text, response=response)
 
-    async def create_payment_method(
+    async def send_invoice(
         self,
-        body: PaymentMethod,
+        invoice_id: UUID,
         *,
         timeout: float | None = None,
-    ) -> PaymentMethod:
-        path = "/payment-methods"
+    ) -> Invoice:
+        path = "/invoices/{invoiceId}/send"
+        path = path.replace("{invoiceId}", serialize_path("invoiceId", invoice_id))
 
         headers = dict(self._headers)
         headers.setdefault("Accept", "application/json")
 
         apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        json_body = TypeAdapter(PaymentMethod).dump_python(
-            body, mode="json", by_alias=True, exclude_none=True
-        )
-
         response = await self._client.request(
             method="POST",
             url=f"{self._base_url}{path}",
             headers=headers,
-            json=json_body,
             timeout=self._timeout if timeout is None else timeout,
         )
 
-        if response.status_code == 201:
-            return TypeAdapter(PaymentMethod).validate_python(response.json())
+        if response.status_code == 200:
+            return Invoice.model_validate(response.json())
+        if response.status_code == 409:
+            parsed_body = ApiErrorModel.model_validate(response.json())
+            raise ApiError(response.status_code, response.text, parsed_body, response)
 
         raise ApiError(response.status_code, response.text, response=response)

@@ -1,7 +1,11 @@
 import pytest
 
 from httpxgen.generator import GenerationError
-from httpxgen.generator.package import render_package_init
+from httpxgen.generator.package import (
+    render_client_package_init,
+    render_package_init,
+    render_workspace_init,
+)
 
 
 def test_render_package_init_exports_the_client_error_and_models():
@@ -9,7 +13,7 @@ def test_render_package_init_exports_the_client_error_and_models():
 
     assert "from .client import PaymentsClient" in source
     assert "from .exceptions import ApiError" in source
-    assert "from .models import (\n    Charge," in source
+    assert "from .models import Charge" in source
     assert '    "PaymentsClient",' in source
     assert '    "Charge",' in source
 
@@ -28,3 +32,28 @@ def test_render_package_init_rejects_normalized_name_collisions():
 
     with pytest.raises(GenerationError, match="same class name"):
         render_package_init(schemas, "PaymentsClient")
+
+
+def test_render_client_package_init_exports_its_client_and_own_models():
+    source = render_client_package_init("PaymentsClient", ["Charge"])
+
+    assert "from .client import PaymentsClient" in source
+    assert "from .models import Charge" in source
+    assert "ApiError" not in source
+
+
+def test_render_workspace_init_reexports_every_client_and_shared_model():
+    source = render_workspace_init(
+        [("payments", "PaymentsClient"), ("invoices", "InvoicesClient")],
+        {"payments": ["Charge"], "invoices": ["Invoice"]},
+        ["Money"],
+    )
+
+    assert "from .invoices import InvoicesClient" in source
+    assert "from .invoices.models import Invoice" in source
+    assert "from .payments import PaymentsClient" in source
+    assert "from .payments.models import Charge" in source
+    assert "from .shared import ApiError" in source
+    assert "from .shared.models import Money" in source
+    assert '    "InvoicesClient",' in source
+    assert '    "PaymentsClient",' in source

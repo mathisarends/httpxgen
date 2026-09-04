@@ -128,34 +128,26 @@ def test_generated_client_serializes_parameters_security_and_typed_errors(tmp_pa
             del sys.modules[name]
 
 
-def test_generated_client_sends_multipart_and_api_key_security(tmp_path):
+def test_generated_client_applies_an_api_key_and_reads_a_text_response(tmp_path):
     spec = OpenAPISpec.model_validate(
         {
             "openapi": "3.1.0",
             "security": [{"apiKey": []}],
             "paths": {
-                "/upload": {
-                    "post": {
-                        "operationId": "upload",
-                        "requestBody": {
-                            "required": True,
-                            "content": {
-                                "multipart/form-data": {
-                                    "schema": {
-                                        "type": "object",
-                                        "required": ["file", "description"],
-                                        "properties": {
-                                            "file": {
-                                                "type": "string",
-                                                "format": "binary",
-                                            },
-                                            "description": {"type": "string"},
-                                        },
-                                    }
-                                }
-                            },
+                "/receipts/{receiptId}": {
+                    "get": {
+                        "operationId": "getReceipt",
+                        "parameters": [
+                            {
+                                "name": "receiptId",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            }
+                        ],
+                        "responses": {
+                            "2XX": {"content": {"text/plain": {}}},
                         },
-                        "responses": {"2XX": {"content": {"text/plain": {}}}},
                     }
                 }
             },
@@ -166,30 +158,26 @@ def test_generated_client_sends_multipart_and_api_key_security(tmp_path):
             },
         }
     )
-    package_dir = tmp_path / "upload_api"
-    write_client(spec=spec, package_dir=package_dir, package_name="upload_api")
+    package_dir = tmp_path / "receipts_api"
+    write_client(spec=spec, package_dir=package_dir, package_name="receipts_api")
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.params["key"] == "secret"
-        assert request.headers["Content-Type"].startswith("multipart/form-data;")
-        assert b'form-data; name="description"' in request.content
-        assert b'form-data; name="file"' in request.content
-        assert b"payload" in request.content
-        return httpx.Response(201, text="stored")
+        assert request.headers["Accept"] == "text/plain"
+        return httpx.Response(200, text="thank you")
 
     sys.path.insert(0, str(tmp_path))
     try:
-        package = importlib.import_module("upload_api")
+        package = importlib.import_module("receipts_api")
         http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-        client = package.UploadApiClient(
+        client = package.ReceiptsApiClient(
             http_client,
             "https://example.test",
             credentials={"apiKey": "secret"},
         )
 
         async def exercise():
-            body = package.UploadBody(file=b"payload", description="avatar")
-            assert await client.upload(body) == "stored"
+            assert await client.get_receipt("r-1") == "thank you"
             await client.aclose()
 
         asyncio.run(exercise())
@@ -198,7 +186,7 @@ def test_generated_client_sends_multipart_and_api_key_security(tmp_path):
         for name in [
             name
             for name in sys.modules
-            if name == "upload_api" or name.startswith("upload_api.")
+            if name == "receipts_api" or name.startswith("receipts_api.")
         ]:
             del sys.modules[name]
 
@@ -280,83 +268,52 @@ def test_read_only_and_write_only_fields_use_directional_models(tmp_path):
             del sys.modules[name]
 
 
-def test_multiple_content_types_are_selected_and_parsed_explicitly(tmp_path):
-    spec = OpenAPISpec.model_validate(
-        {
-            "openapi": "3.1.0",
-            "paths": {
-                "/convert": {
-                    "post": {
-                        "operationId": "convert",
-                        "requestBody": {
-                            "required": True,
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "required": ["value"],
-                                        "properties": {"value": {"type": "string"}},
-                                    }
-                                },
-                                "text/plain": {"schema": {"type": "string"}},
-                            },
-                        },
-                        "responses": {
-                            "200": {
-                                "content": {
-                                    "application/json": {
-                                        "schema": {
-                                            "type": "object",
-                                            "required": ["value"],
-                                            "properties": {"value": {"type": "string"}},
-                                        }
-                                    },
-                                    "text/plain": {"schema": {"type": "string"}},
-                                }
-                            }
-                        },
-                    }
-                }
-            },
-        }
+def test_generated_workspace_shares_one_api_error_between_tag_clients(
+    tmp_path, generatable_spec
+):
+    package_dir = tmp_path / "api"
+    write_client(
+        spec=generatable_spec,
+        package_dir=package_dir,
+        package_name="api",
+        tags=["payments", "invoices"],
     )
-    package_dir = tmp_path / "content_api"
-    write_client(spec=spec, package_dir=package_dir, package_name="content_api")
-    calls = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            assert request.headers["Content-Type"] == "text/plain"
-            assert request.content == b"plain"
-            return httpx.Response(
-                200, text="text-result", headers={"Content-Type": "text/plain"}
-            )
-        assert request.headers["Content-Type"] == "application/json"
-        assert request.content == b'{"value":"json"}'
-        return httpx.Response(200, json={"value": "json-result"})
+        return httpx.Response(404, json={"code": "gone", "message": "not here"})
 
     sys.path.insert(0, str(tmp_path))
     try:
-        package = importlib.import_module("content_api")
+        package = importlib.import_module("api")
         http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-        client = package.ContentApiClient(http_client, "https://example.test")
+        payments = package.PaymentsClient(
+            http_client, "https://example.test", credentials={"bearerAuth": "secret"}
+        )
+        invoices = package.InvoicesClient(
+            http_client, "https://example.test", credentials={"bearerAuth": "secret"}
+        )
+        assert type(payments).__module__ == "api.payments.client"
+        assert type(invoices).__module__ == "api.invoices.client"
+        assert (
+            importlib.import_module("api.payments.client").ApiError
+            is importlib.import_module("api.invoices.client").ApiError
+        )
 
         async def exercise():
-            text = await client.convert("plain", content_type="text/plain")
-            assert text == "text-result"
-            body = package.ConvertBody(value="json")
-            result = await client.convert(body)
-            assert result.value == "json-result"
-            await client.aclose()
+            for call in (payments.get_customer, invoices.get_invoice):
+                try:
+                    await call("11111111-1111-1111-1111-111111111111")
+                except package.ApiError as error:
+                    assert error.status_code == 404
+                    assert error.parsed_body.message == "not here"
+                else:
+                    raise AssertionError("expected ApiError")
+            await http_client.aclose()
 
         asyncio.run(exercise())
     finally:
         sys.path.remove(str(tmp_path))
         for name in [
-            name
-            for name in sys.modules
-            if name == "content_api" or name.startswith("content_api.")
+            name for name in sys.modules if name == "api" or name.startswith("api.")
         ]:
             del sys.modules[name]

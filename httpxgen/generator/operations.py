@@ -40,17 +40,7 @@ class Parameter:
 class Body:
     annotation: str
     required: bool
-    media_type: str
-    kind: str
-    binary_fields: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class ResponseContent:
-    annotation: str
-    model_annotation: str | None
-    kind: str
-    media_type: str
+    media_type: str = "application/json"
 
 
 @dataclass(frozen=True)
@@ -61,7 +51,6 @@ class Response:
     success: bool = True
     kind: str = "json"
     media_type: str | None = None
-    contents: tuple[ResponseContent, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -85,12 +74,11 @@ class Operation:
     body: Body | None = None
     security: tuple[tuple[str, ...], ...] = ()
     security_schemes: tuple[SecurityScheme, ...] = ()
-    bodies: tuple[Body, ...] = ()
 
 
 def read_operations(spec: OpenAPISpec) -> tuple[Operation, ...]:
     operations: list[Operation] = []
-    schemes = _read_security_schemes(spec)
+    schemes = read_security_schemes(spec)
     for path in sorted(spec.paths):
         path_item = _resolve_path_item(spec.paths[path], spec)
         for method in HttpMethod:
@@ -99,8 +87,7 @@ def read_operations(spec: OpenAPISpec) -> tuple[Operation, ...]:
                 continue
             if not operation.operation_id:
                 raise GenerationError(f"{method.upper()} {path} has no operationId")
-            bodies = _read_bodies(operation.request_body, spec)
-            body = bodies[0] if bodies else None
+            body = _read_body(operation.request_body, spec)
             parameters = _read_parameters(
                 [*path_item.parameters, *operation.parameters], spec
             )
@@ -124,17 +111,12 @@ def read_operations(spec: OpenAPISpec) -> tuple[Operation, ...]:
                     path=path,
                     name=identifier(operation.operation_id),
                     parameters=parameters,
-                    body_annotation=(
-                        " | ".join(dict.fromkeys(item.annotation for item in bodies))
-                        if bodies
-                        else None
-                    ),
+                    body_annotation=body.annotation if body else None,
                     body_required=body.required if body else False,
                     responses=_read_responses(operation.responses, method, path, spec),
                     body=body,
                     security=requirements,
                     security_schemes=schemes,
-                    bodies=bodies,
                 )
             )
 
@@ -189,7 +171,7 @@ def _read_parameters(
         required = value.required or value.location == "path"
         schema = value.schema_
         if value.content:
-            schema, _, _ = _select_media(value.content, "parameter")
+            schema, _, _ = _select_media(value.content, "parameter", kinds=("json",))
         annotation = schema_type(schema)
         if (
             not required
@@ -255,38 +237,19 @@ def _validate_parameters(
             )
 
 
-def _read_bodies(
-    value: RequestBody | Reference | None, spec: OpenAPISpec
-) -> tuple[Body, ...]:
+def _read_body(value: RequestBody | Reference | None, spec: OpenAPISpec) -> Body | None:
     if value is None:
-        return ()
+        return None
     if isinstance(value, Reference):
         value = RequestBody.model_validate(
             _resolve_component(
                 value.ref, "requestBodies", spec.components.request_bodies
             )
         )
-    result: list[Body] = []
-    for schema, media_type, kind in _media_options(value.content, "request body"):
-        annotation = (
-            "bytes"
-            if kind == "binary"
-            else "str"
-            if kind == "text"
-            else schema_type(schema)
-        )
-        body_shape = schema
-        if "$ref" in schema:
-            referenced_name = _reference_name(schema["$ref"], "schemas")
-            body_shape = spec.components.schemas.get(referenced_name, schema)
-        _, body_shape = split_all_of(body_shape)
-        binary_fields = tuple(
-            name
-            for name, field in body_shape.get("properties", {}).items()
-            if field.get("format") == "binary"
-        )
-        result.append(Body(annotation, value.required, media_type, kind, binary_fields))
-    return tuple(result)
+    schema, media_type, _ = _select_media(
+        value.content, "request body", kinds=("json",)
+    )
+    return Body(schema_type(schema), value.required, media_type)
 
 
 def _read_responses(
@@ -303,29 +266,14 @@ def _read_responses(
                 _resolve_component(response.ref, "responses", spec.components.responses)
             )
         success = _is_success_status(status_text)
+        model_annotation: str | None = None
         if response.content:
-            contents = tuple(
-                ResponseContent(
-                    annotation=(
-                        "bytes"
-                        if kind == "binary"
-                        else "str"
-                        if kind == "text"
-                        else schema_type(schema)
-                    ),
-                    model_annotation=_response_model(schema, spec.components.schemas),
-                    kind=kind,
-                    media_type=media_type,
-                )
-                for schema, media_type, kind in _media_options(
-                    response.content, "response"
-                )
+            schema, media_type, kind = _select_media(
+                response.content, "response", kinds=("json", "text", "binary")
             )
-            annotation = " | ".join(dict.fromkeys(item.annotation for item in contents))
-            media_type = contents[0].media_type
-            kind = contents[0].kind
+            annotation = _content_annotation(schema, kind)
+            model_annotation = _response_model(schema, spec.components.schemas)
         else:
-            contents = ()
             media_type, kind, annotation = None, "empty", "None"
         status: int | str = (
             int(status_text) if status_text.isdigit() else status_text.upper()
@@ -340,13 +288,10 @@ def _read_responses(
             Response(
                 status=status,
                 annotation=annotation,
-                model_annotation=(
-                    contents[0].model_annotation if len(contents) == 1 else None
-                ),
+                model_annotation=model_annotation,
                 success=success,
                 kind=kind,
                 media_type=media_type,
-                contents=contents,
             )
         )
     if not any(response.success for response in responses):
@@ -378,40 +323,54 @@ def _response_model(
 
 
 def _select_media(
-    content: Mapping[str, MediaType], context: str
+    content: Mapping[str, MediaType], context: str, *, kinds: Sequence[str]
 ) -> tuple[Mapping[str, Any], str, str]:
-    options = _media_options(content, context)
+    """Pick the one media type a generated method uses, preferring JSON."""
+    if not content:
+        raise GenerationError(f"{context} has no content types")
+    options = [
+        (schema, media_type, kind)
+        for media_type, media in content.items()
+        if (kind := _media_kind(media_type, media)) in kinds
+        and (schema := _media_schema(media, kind)) is not None
+    ]
+    if not options:
+        raise GenerationError(
+            f"unsupported {context} media type(s): {', '.join(content)}"
+        )
     return next((item for item in options if item[2] == "json"), options[0])
 
 
-def _media_options(
-    content: Mapping[str, MediaType], context: str
-) -> tuple[tuple[Mapping[str, Any], str, str], ...]:
-    result: list[tuple[Mapping[str, Any], str, str]] = []
-    for media_type, media in content.items():
-        normalized = media_type.split(";", 1)[0].strip().lower()
-        if normalized == "application/json" or normalized.endswith("+json"):
-            schema, kind = media.schema_ or {}, "json"
-        elif normalized == "multipart/form-data":
-            schema, kind = media.schema_ or {}, "multipart"
-        elif normalized == "application/x-www-form-urlencoded":
-            schema, kind = media.schema_ or {}, "form"
-        elif normalized.startswith("text/"):
-            schema, kind = media.schema_ or {"type": "string"}, "text"
-        elif (
-            normalized == "application/octet-stream"
-            or (media.schema_ or {}).get("format") == "binary"
-        ):
-            schema, kind = (
-                media.schema_ or {"type": "string", "format": "binary"},
-                "binary",
-            )
-        else:
-            raise GenerationError(f"unsupported {context} media type: {media_type}")
-        result.append((schema, media_type, kind))
-    if not result:
-        raise GenerationError(f"{context} has no content types")
-    return tuple(result)
+def _media_kind(media_type: str, media: MediaType) -> str:
+    normalized = media_type.split(";", 1)[0].strip().lower()
+    if normalized == "application/json" or normalized.endswith("+json"):
+        return "json"
+    if normalized.startswith("text/"):
+        return "text"
+    if (
+        normalized == "application/octet-stream"
+        or (media.schema_ or {}).get("format") == "binary"
+    ):
+        return "binary"
+    return "unsupported"
+
+
+def _media_schema(media: MediaType, kind: str) -> Mapping[str, Any]:
+    if media.schema_:
+        return media.schema_
+    if kind == "text":
+        return {"type": "string"}
+    if kind == "binary":
+        return {"type": "string", "format": "binary"}
+    return {}
+
+
+def _content_annotation(schema: Mapping[str, Any], kind: str) -> str:
+    if kind == "binary":
+        return "bytes"
+    if kind == "text":
+        return "str"
+    return schema_type(schema)
 
 
 def _resolve_component(
@@ -433,7 +392,7 @@ def _reference_name(reference: str, section: str) -> str:
     return reference.removeprefix(prefix).replace("~1", "/").replace("~0", "~")
 
 
-def _read_security_schemes(spec: OpenAPISpec) -> tuple[SecurityScheme, ...]:
+def read_security_schemes(spec: OpenAPISpec) -> tuple[SecurityScheme, ...]:
     result: list[SecurityScheme] = []
     for name, raw in spec.components.security_schemes.items():
         kind = raw.get("type")

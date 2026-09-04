@@ -1,11 +1,15 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from httpxgen.generator import GenerationError, generate_client
+from httpxgen.generator import GenerationError, generate_client, generate_workspace
 from httpxgen.generator.templates import GENERATED_HEADER
 from httpxgen.openapi import OpenAPISpec
 
 _PRESERVE_IF_UNMANAGED = {"__init__.py", "py.typed"}
+
+
+def _is_preserved(relative: str) -> bool:
+    return relative.rsplit("/", 1)[-1] in _PRESERVE_IF_UNMANAGED
 
 
 def write_client(
@@ -13,9 +17,16 @@ def write_client(
     spec: OpenAPISpec,
     package_dir: Path,
     package_name: str | None = None,
+    tags: Sequence[str] = (),
+    schema_tags: Sequence[str] = (),
     check: bool = False,
 ) -> list[Path]:
-    rendered = generate_client(spec, package_name or package_dir.name)
+    name = package_name or package_dir.name
+    rendered = (
+        generate_workspace(spec, tags, name, schema_tags=schema_tags)
+        if len(tags) > 1
+        else generate_client(spec, name)
+    )
     output = _managed_output(package_dir, rendered)
     changed = _changed_files(package_dir, output)
 
@@ -25,9 +36,10 @@ def write_client(
             raise GenerationError(f"generated client is stale: {paths}")
         return []
 
-    package_dir.mkdir(parents=True, exist_ok=True)
     for relative, content in output.items():
-        (package_dir / relative).write_text(content)
+        path = package_dir / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
     return changed
 
 
@@ -45,7 +57,7 @@ def _managed_output(package_dir: Path, rendered: Mapping[str, str]) -> dict[str,
         path = package_dir / relative
         if not path.exists() or _is_generated(path) or path.read_text() == content:
             output[relative] = content
-        elif relative not in _PRESERVE_IF_UNMANAGED:
+        elif not _is_preserved(relative):
             raise GenerationError(f"refusing to overwrite non-generated file: {path}")
     return output
 

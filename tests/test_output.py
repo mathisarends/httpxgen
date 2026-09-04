@@ -15,6 +15,7 @@ def test_write_client_creates_an_importable_package(tmp_path, generatable_spec):
 
     assert {path.name for path in changed} == {
         "__init__.py",
+        "serialization.py",
         "client.py",
         "exceptions.py",
         "models.py",

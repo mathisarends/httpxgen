@@ -22,12 +22,11 @@ das erst zur Laufzeit sichtbar wird, braucht zusätzlich einen Test mit
 - [x] Parameter-Defaults und zentrale Zahlen-/String-/Array-Constraints anwenden
 - [x] JSON und `application/*+json` verarbeiten
 - [x] optionale Bodies wirklich weglassen, statt JSON `null` zu senden
-- [x] Text-, Binär-, Form- und Multipart-Requests generieren
 - [x] Text-, Binär- und JSON-Responses verarbeiten
 - [x] explizite Statuscodes, Statusbereiche wie `2XX` und `default` behandeln
 - [x] dokumentierte Fehler-Bodies validieren und über `ApiError.parsed_body`
   verfügbar machen
-- [x] `Accept` und bei Raw-Bodies `Content-Type` passend setzen
+- [x] `Accept` und bei Vendor-JSON `Content-Type` passend setzen
 - [x] globale und operationale Security inklusive `security: []` vererben
 - [x] Bearer, Basic, OAuth-/OIDC-Bearer und API Keys in Header, Query oder Cookie
   injizieren
@@ -46,7 +45,11 @@ das erst zur Laufzeit sichtbar wird, braucht zusätzlich einen Test mit
 - [x] normalisierte Property-/Enum-/Schema-Namenskollisionen früh erkennen
 - [x] OpenAPI-3.0-`exclusiveMinimum`/`exclusiveMaximum` korrekt normalisieren
 - [x] JSON- und YAML-Dateien inklusive UTF-8-BOM laden
-- [x] echte Transporttests für Serialisierung, Auth, Fehler und Multipart ergänzen
+- [x] echte Transporttests für Serialisierung, Auth und Fehler ergänzen
+- [x] Support-Code (Serialisierung, `ApiError`) aus `client.py` in eigene Module
+  ziehen; bei mehreren `--tag` einmalig unter `shared/` generieren
+- [x] Models beim Tag-Split dem Paket zuordnen, das sie nutzt; nur von mehreren
+  Tags genutzte Schemas landen in `shared/models.py`
 
 ## Noch offen – hohe Priorität
 
@@ -55,9 +58,11 @@ zu falschen Typen oder fehlendem Verhalten führen.
 
 - [ ] `readOnly` und `writeOnly` durch getrennte Request-/Response-Modelle
   abbilden. Ein gemeinsames Modell kann derzeit auf einer Seite zu viel verlangen.
+- [ ] Form-, Multipart- und Binär-Request-Bodies wieder unterstützen. Aktuell
+  bricht die Generierung dafür mit einer `GenerationError` ab.
 - [ ] Mehrere Request-/Response-Content-Types derselben Operation explizit
   modellieren. Aktuell wählt der Generator bevorzugt JSON, danach den ersten
-  unterstützten Typ.
+  unterstützten Response-Typ.
 - [ ] `oneOf` als „genau eine Variante“ validieren. Ohne Discriminator verhält
   sich die erzeugte Pydantic-Union derzeit näher an `anyOf`.
 - [ ] `allOf`-Property-Konflikte zwischen Basismodellen erkennen und mit

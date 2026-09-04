@@ -5,7 +5,7 @@ import yaml
 
 from httpxgen import OpenAPISpec
 
-_SPEC_PATH = Path(__file__).parent.parent / "specs" / "api.yaml"
+_SPEC_PATH = Path(__file__).parent.parent / "specs" / "api.yml"
 
 
 @pytest.fixture
@@ -15,9 +15,7 @@ def reference_spec() -> OpenAPISpec:
 
 @pytest.fixture
 def generatable_spec() -> OpenAPISpec:
-    spec = _read_reference_spec(rename_api_error=True)
-    del spec.paths["/customers/{customerId}/avatar"]
-    return spec
+    return _read_reference_spec(rename_api_error=True)
 
 
 def _read_reference_spec(*, rename_api_error: bool = False) -> OpenAPISpec:

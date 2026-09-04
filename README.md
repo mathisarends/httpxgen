@@ -7,9 +7,29 @@ httpxgen emits plain Python you could have written by hand: `async def` methods 
 ```
 openapi.json  ──▶  httpxgen  ──▶  payments/
                                     ├── __init__.py
-                                    ├── client.py
+                                    ├── client.py         # the public client class
                                     ├── models.py
-                                    ├── exceptions.py
+                                    ├── exceptions.py     # ApiError
+                                    ├── serialization.py  # parameter and auth helpers
+                                    └── py.typed
+```
+
+Split a large document along its tags and the support modules are generated once,
+beside the clients that share them:
+
+```
+openapi.json  ──▶  httpxgen  ──▶  api/
+                                    ├── __init__.py       # clients, ApiError, all models
+                                    ├── shared/           # generated once
+                                    │     ├── exceptions.py
+                                    │     ├── models.py   # only models used by both tags
+                                    │     └── serialization.py
+                                    ├── payments/
+                                    │     ├── client.py
+                                    │     └── models.py   # models only payments uses
+                                    ├── invoices/
+                                    │     ├── client.py
+                                    │     └── models.py
                                     └── py.typed
 ```
 
@@ -43,7 +63,7 @@ httpxgen openapi.yaml src/payments --package-name payments
 ```
 
 ```
-Generated 5 file(s) in package src/payments.
+Generated 6 file(s) in package src/payments.
 ```
 
 ```python
@@ -109,15 +129,14 @@ asyncio.run(main())
 
 `operationId` becomes an idiomatic snake_case method, optional query parameters are only sent when set, and the response is validated into a model:
 
+`client.py` holds nothing but the imports and the client class — the serialization
+helpers live in `serialization.py`, the error type in `exceptions.py`:
+
 ```python
 class ListChargesParams(BaseModel):
     status: ChargeStatus | None = None
     cursor: str | None = None
     page_size: int = Field(25, ge=1, le=200)
-
-
-class _HttpMethod(StrEnum):
-    GET = "GET"
 
 
 class PaymentsClient:
@@ -130,28 +149,26 @@ class PaymentsClient:
         timeout: float | None = None,
     ) -> ChargePage:
         path = "/charges"
-        headers = dict(self._headers)
+
         params = ListChargesParams(
             status=status,
             cursor=cursor,
             page_size=page_size,
         )
-        query = []
+        query: list[tuple[str, str]] = []
         if params.status is not None:
-            query.extend(_serialize_query("status", params.status, "form", True))
+            query.extend(serialize_query("status", params.status))
         if params.cursor is not None:
-            query.extend(_serialize_query("cursor", params.cursor, "form", True))
-        query.extend(_serialize_query("page_size", params.page_size, "form", True))
-        _apply_security(
-            self._credentials,
-            (("bearerAuth",),),
-            headers,
-            query,
-            {},
-        )
+            query.extend(serialize_query("cursor", params.cursor))
+        query.extend(serialize_query("page_size", params.page_size))
+
+        headers = dict(self._headers)
+        headers.setdefault("Accept", "application/json")
+
+        apply_security(self._credentials, [("bearerAuth",)], headers, query, {})
 
         response = await self._client.request(
-            method=_HttpMethod.GET,
+            method="GET",
             url=f"{self._base_url}{path}",
             params=query,
             headers=headers,
@@ -174,16 +191,25 @@ Path parameters carry their spec format — `format: uuid` becomes `UUID`, not `
         timeout: float | None = None,
     ) -> Customer:
         path = "/customers/{customerId}"
-        path = path.replace(
-            "{customerId}",
-            _serialize_path("customerId", customer_id, "simple", False, False),
-        )
+        path = path.replace("{customerId}", serialize_path("customerId", customer_id))
+
+        headers = dict(self._headers)
+        headers.setdefault("Accept", "application/json")
+
         response = await self._client.request(
-            method=_HttpMethod.GET,
+            method="GET",
             url=f"{self._base_url}{path}",
-            ...
+            headers=headers,
+            timeout=self._timeout if timeout is None else timeout,
         )
-        ...
+
+        if response.status_code == 200:
+            return Customer.model_validate(response.json())
+        if response.status_code == 404:
+            parsed_body = ApiErrorModel.model_validate(response.json())
+            raise ApiError(response.status_code, response.text, parsed_body, response)
+
+        raise ApiError(response.status_code, response.text, response=response)
 ```
 
 Request bodies are a single typed `body` argument, serialized by alias and without `None` noise:
@@ -195,7 +221,8 @@ Request bodies are a single typed `body` argument, serialized by alias and witho
         *,
         timeout: float | None = None,
     ) -> Charge:
-        body_arguments["json"] = TypeAdapter(CreateChargeRequest).dump_python(
+        ...
+        json_body = TypeAdapter(CreateChargeRequest).dump_python(
             body, mode="json", by_alias=True, exclude_none=True
         )
         ...
@@ -271,9 +298,9 @@ httpxgen OPENAPI OUTPUT [--package-name NAME] [--tag TAG] [--schema-tag TAG] [--
 | Argument | Meaning |
 | --- | --- |
 | `OPENAPI` | OpenAPI JSON or YAML file |
-| `OUTPUT` | exact target package directory (created if missing) |
+| `OUTPUT` | target package directory, or the root holding one package per tag when several `--tag` are given (created if missing) |
 | `--package-name` | import name and client class prefix; defaults to the output directory name |
-| `--tag TAG` | generate only operations carrying this tag; repeatable |
+| `--tag TAG` | generate only operations carrying this tag; repeat it for one package per tag |
 | `--schema-tag TAG` | keep schemas referenced by this tag without generating its operations; repeatable |
 | `--check` | write nothing; exit non-zero when the checked-in output is stale |
 
@@ -282,8 +309,29 @@ Carve a focused client out of a large spec:
 ```sh
 httpxgen openapi.json src/billing \
   --package-name billing \
-  --tag charges --tag refunds \
+  --tag charges \
   --schema-tag webhooks
+```
+
+Repeat `--tag` and you get one client package per tag. `ApiError` and the
+serialization helpers are generated once in `shared/`, and every model lands in
+the package that uses it — `shared/models.py` holds only what more than one tag
+references. Generated modules import each other absolutely, so the output reads
+the same wherever you open it:
+
+```sh
+httpxgen specs/api.yml src/api --package-name api --tag payments --tag invoices
+```
+
+```python
+# src/api/invoices/client.py
+from api.invoices.models import CreateInvoiceRequest, Invoice, InvoicePage
+from api.shared import ApiError, apply_security, serialize_path
+from api.shared.models import ApiErrorModel
+```
+
+```python
+from api import ApiError, InvoicesClient, Money, PaymentsClient
 ```
 
 Every managed file starts with a `# Generated by httpxgen. DO NOT EDIT.` header. Files without it are never overwritten — httpxgen aborts instead.
@@ -340,7 +388,7 @@ client-check:
 
 ## How the Payments API is handled
 
-The repository fixture in `specs/api.yaml` is the executable reference for a
+The repository fixture in `specs/api.yml` is the executable reference for a
 normal, non-trivial API:
 
 - Its global `bearerAuth` requirement becomes the `credentials` entry shown
@@ -352,8 +400,6 @@ normal, non-trivial API:
   segment instead of changing the endpoint.
 - `CreateChargeRequest` is serialized as JSON by alias. JSON-compatible vendor
   media types such as `application/problem+json` are handled as JSON too.
-- The avatar endpoint sends raw bytes with `Content-Type: image/png`. Form and
-  multipart schemas use `data=` and `files=` respectively.
 - A successful charge response becomes `Charge`. The documented 402 response
   raises `ApiError`; its validated `ChargeError` is available as
   `error.parsed_body`. Undocumented statuses also raise `ApiError`, with the
@@ -366,23 +412,23 @@ normal, non-trivial API:
 - The schema component named `ApiError` is generated as `ApiErrorModel` to avoid
   colliding with the runtime exception.
 
-When an operation offers several content types, httpxgen currently prefers JSON
-(including `+json`) and otherwise uses the first supported form, multipart,
-text, or binary type. Pass the base URL explicitly: `servers` is not used as an
-implicit network destination.
+When an operation offers several content types, httpxgen prefers JSON (including
+`+json`) and otherwise uses the first supported text or binary response type.
+Request bodies must be JSON. Pass the base URL explicitly: `servers` is not used
+as an implicit network destination.
 
 ## Scope
 
 httpxgen targets ordinary OpenAPI 3.0 and 3.1 client specifications, not every
 JSON Schema feature. It supports JSON/YAML input, local component references,
-path/query/header/cookie serialization, common request and response media types,
-numeric/default/status-range responses, typed error bodies, common security
-schemes, inline and recursive Pydantic models, enums, nullable values,
+path/query/header/cookie serialization, JSON request bodies, JSON/text/binary
+responses, numeric/default/status-range responses, typed error bodies, common
+security schemes, inline and recursive Pydantic models, enums, nullable values,
 discriminated unions, and practical `allOf` inheritance.
 
 Unsupported constructs fail generation where possible. Important remaining
-limitations are separate `readOnly`/`writeOnly` models, exact non-discriminated
-`oneOf` semantics, multiple selectable media types, response-header return
+limitations are exact non-discriminated `oneOf` semantics, form/multipart and
+binary request bodies, multiple selectable media types, response-header return
 models, external references, streaming, callbacks/webhooks, automatic
 pagination, and a synchronous client.
 

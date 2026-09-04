@@ -1,4 +1,4 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -37,7 +37,12 @@ class _DiscriminatorEnum:
 def render_models(
     schemas: Mapping[str, Any],
     operations: Sequence[Operation] = (),
+    *,
+    defined: Collection[str] | None = None,
+    external: Sequence[tuple[str, Sequence[str]]] = (),
 ) -> str:
+    """Render the models of `defined`, resolving references against `schemas`."""
+    defined = set(schemas) if defined is None else set(defined)
     query_names = [
         query_model_name(operation)
         for operation in operations
@@ -49,15 +54,17 @@ def render_models(
         raise GenerationError(
             f"generated query model names conflict with components: {', '.join(conflicts)}"
         )
-    discriminator_enums_by_field = _discriminator_enums(schemas)
+    discriminator_enums_by_field, enums_by_union = _discriminator_enums(schemas)
     blocks = [
         *(
             _render_discriminator_enum(enum)
-            for enum in dict.fromkeys(discriminator_enums_by_field.values())
+            for union, enum in enums_by_union.items()
+            if union in defined
         ),
         *(
             _render_component(name, schemas[name], discriminator_enums_by_field)
             for name in ordered_schemas(schemas)
+            if name in defined
         ),
         *(
             _render_query_model(operation)
@@ -68,13 +75,13 @@ def render_models(
     body = "\n\n\n".join(block for block in blocks if block)
     if not body:
         body = "# This API does not define component schemas."
-    imports = _render_model_imports(body)
+    imports = _render_model_imports(body, external)
     return render_template(TemplateName.MODELS, imports=imports, body=body)
 
 
 def exported_model_names(schemas: Mapping[str, Any]) -> list[str]:
     discriminator_names = [
-        enum.name for enum in dict.fromkeys(_discriminator_enums(schemas).values())
+        enum.name for enum in dict.fromkeys(_discriminator_enums(schemas)[1].values())
     ]
     return [
         *discriminator_names,
@@ -110,7 +117,9 @@ def _render_query_field(parameter: Parameter) -> str:
     return f"{parameter.name}: {parameter.annotation} = Field({', '.join(arguments)})"
 
 
-def _render_model_imports(body: str) -> str:
+def _render_model_imports(
+    body: str, external: Sequence[tuple[str, Sequence[str]]] = ()
+) -> str:
     lines: list[str] = []
     datetime_names = used_names(body, ("date", "datetime"))
     typing_names = used_names(body, ("Annotated", "Any", "Literal"))
@@ -127,13 +136,18 @@ def _render_model_imports(body: str) -> str:
         if lines:
             lines.append("")
         lines.append(f"from pydantic import {', '.join(pydantic_names)}")
+    for module, names in sorted(external):
+        used = used_names(body, tuple(names))
+        if used:
+            lines.extend(["", f"from {module} import {', '.join(used)}"])
     return "\n".join(lines)
 
 
 def _discriminator_enums(
     schemas: Mapping[str, Any],
-) -> dict[tuple[str, str], _DiscriminatorEnum]:
+) -> tuple[dict[tuple[str, str], _DiscriminatorEnum], dict[str, _DiscriminatorEnum]]:
     result: dict[tuple[str, str], _DiscriminatorEnum] = {}
+    by_union: dict[str, _DiscriminatorEnum] = {}
     for union_name, union_schema in schemas.items():
         variants = union_schema.get("oneOf") or union_schema.get("anyOf")
         property_name = union_schema.get("discriminator", {}).get("propertyName")
@@ -152,6 +166,7 @@ def _discriminator_enums(
         )
         if not enum.values:
             continue
+        by_union[union_name] = enum
         for variant in variants:
             reference = variant.get("$ref")
             if not isinstance(reference, str):
@@ -159,7 +174,7 @@ def _discriminator_enums(
             component_name = reference.rsplit("/", 1)[-1]
             if _discriminator_values(schemas, variant, property_name):
                 result[(component_name, property_name)] = enum
-    return result
+    return result, by_union
 
 
 def _discriminator_values(

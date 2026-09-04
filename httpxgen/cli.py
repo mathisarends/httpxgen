@@ -14,7 +14,12 @@ def main() -> int:
         description="Generate a typed async Python client from OpenAPI JSON or YAML."
     )
     parser.add_argument("openapi", type=Path, help="OpenAPI JSON or YAML file")
-    parser.add_argument("output", type=Path, help="exact target package directory")
+    parser.add_argument(
+        "output",
+        type=Path,
+        help="target package directory, or the root holding one package per tag "
+        "when more than one --tag is given",
+    )
     parser.add_argument(
         "--package-name",
         help="generated import package name; defaults to the output directory name",
@@ -30,7 +35,8 @@ def main() -> int:
         action="append",
         default=[],
         metavar="TAG",
-        help="include only operations with this OpenAPI tag; may be repeated",
+        help="include only operations with this OpenAPI tag; repeat it to generate "
+        "one package per tag around a shared support package",
     )
     parser.add_argument(
         "--schema-tag",
@@ -44,15 +50,18 @@ def main() -> int:
 
     try:
         spec = load_openapi(args.openapi)
-        spec = filter_operations_by_tags(
-            spec,
-            args.tags,
-            schema_tags=args.schema_tags,
-        )
+        if len(args.tags) <= 1:
+            spec = filter_operations_by_tags(
+                spec,
+                args.tags,
+                schema_tags=args.schema_tags,
+            )
         changed = write_client(
             spec=spec,
             package_dir=args.output,
             package_name=args.package_name,
+            tags=args.tags,
+            schema_tags=args.schema_tags,
             check=args.check,
         )
     except (GenerationError, OSError, ValueError) as error:

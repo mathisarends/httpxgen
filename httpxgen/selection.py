@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Any
 
-from httpxgen.generator import GenerationError
+from httpxgen.generator.errors import GenerationError
 from httpxgen.openapi import (
     APIOperation,
     HttpMethod,

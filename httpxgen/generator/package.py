@@ -1,4 +1,4 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from httpxgen.generator.errors import GenerationError
@@ -23,10 +23,11 @@ _RESERVED_NAMES = {
     "datetime",
 }
 _CLIENT_METHODS = {"aclose", "__aenter__", "__aexit__"}
+_LINE_LENGTH = 88
 
 
 def validate_package_names(
-    schemas: Mapping[str, Any], operations: tuple[Operation, ...], client_name: str
+    schemas: Mapping[str, Any], operations: Sequence[Operation], client_name: str
 ) -> None:
     exported_models = exported_model_names(schemas)
     query_models = [
@@ -47,20 +48,71 @@ def validate_package_names(
 
 
 def render_package_init(schemas: Mapping[str, Any], client_name: str) -> str:
-    exported_models = sorted(exported_model_names(schemas))
-    _check_no_name_collisions(exported_models, client_name)
-    model_names = ",\n    ".join(exported_models)
-    imports = f"\n    {model_names},\n" if model_names else ""
-    exports = "\n".join(
-        f"    {string_literal(name)},"
-        for name in sorted(["ApiError", client_name, *exported_models])
-    )
+    """Render the __init__ of a self-contained single-client package."""
+    models = sorted(exported_model_names(schemas))
+    _check_no_name_collisions(models, client_name)
+    imports = [
+        f"from .client import {client_name}",
+        "from .exceptions import ApiError",
+        *_model_import(".models", models),
+    ]
+    return _render_init(imports, ["ApiError", client_name, *models])
+
+
+def render_client_package_init(client_name: str, models: Sequence[str]) -> str:
+    """Render the __init__ of one tag package inside a workspace."""
+    _check_no_name_collisions(list(models), client_name)
+    imports = [
+        f"from .client import {client_name}",
+        *_model_import(".models", models),
+    ]
+    return _render_init(imports, [client_name, *models])
+
+
+def render_workspace_init(
+    clients: Sequence[tuple[str, str]],
+    models_by_module: Mapping[str, Sequence[str]],
+    shared_models: Sequence[str],
+) -> str:
+    """Render the root __init__ that re-exports every tag client and model."""
+    imports = [
+        *(
+            line
+            for module, name in sorted(clients)
+            for line in (
+                f"from .{module} import {name}",
+                *_model_import(f".{module}.models", models_by_module.get(module, ())),
+            )
+        ),
+        "from .shared import ApiError",
+        *_model_import(".shared.models", shared_models),
+    ]
+    names = [
+        "ApiError",
+        *(name for _, name in clients),
+        *shared_models,
+        *(name for models in models_by_module.values() for name in models),
+    ]
+    return _render_init(imports, names)
+
+
+def _render_init(imports: Sequence[str], exports: Sequence[str]) -> str:
     return render_template(
         TemplateName.PACKAGE_INIT,
-        client_name=client_name,
-        model_imports=imports,
-        exports=exports,
+        imports="\n".join(imports),
+        exports="\n".join(
+            f"    {string_literal(name)}," for name in sorted(set(exports))
+        ),
     )
+
+
+def _model_import(module: str, models: Sequence[str]) -> list[str]:
+    if not models:
+        return []
+    single_line = f"from {module} import {', '.join(models)}"
+    if len(single_line) <= _LINE_LENGTH:
+        return [single_line]
+    return [f"from {module} import (", *(f"    {name}," for name in models), ")"]
 
 
 def _check_no_name_collisions(exported_models: list[str], client_name: str) -> None:

@@ -7,10 +7,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from preview.shared.models import BaseEntity, Money
 
 
 class PaymentMethodType(StrEnum):
@@ -32,27 +34,12 @@ class Address(BaseModel):
     country: str = Field(min_length=2, max_length=2)
 
 
-class ApiErrorModel(BaseModel):
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-
-    code: str
-    message: str
-    details: dict[str, Any] = None
-
-
 class BankTransferPaymentMethod(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     type: Literal[PaymentMethodType.BANK_TRANSFER]
     iban: str
     account_holder: str
-
-
-class BaseEntity(BaseModel):
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-
-    id: str
-    created_at: datetime
 
 
 class CardPaymentMethod(BaseModel):
@@ -70,13 +57,6 @@ class ChargeStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     REFUNDED = "refunded"
-
-
-class Money(BaseModel):
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-
-    amount_cents: int
-    currency: str = Field(min_length=3, max_length=3)
 
 
 PaymentMethod = Annotated[

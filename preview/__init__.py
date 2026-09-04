@@ -3,8 +3,16 @@
 # ============================================================================
 
 
-from .client import PaymentsClient
-from .models import (
+from .invoices import InvoicesClient
+from .invoices.models import (
+    CreateInvoiceRequest,
+    Invoice,
+    InvoiceLineItem,
+    InvoicePage,
+    InvoiceStatus,
+)
+from .payments import PaymentsClient
+from .payments.models import (
     Address,
     BankTransferPaymentMethod,
     CardPaymentMethod,
@@ -22,10 +30,15 @@ from .models import (
     PaymentMethod,
     PaymentMethodType,
 )
+from .shared import ApiError
+from .shared.models import ApiErrorModel, BaseEntity, Money
 
 __all__ = [
     "Address",
+    "ApiError",
+    "ApiErrorModel",
     "BankTransferPaymentMethod",
+    "BaseEntity",
     "CardPaymentMethod",
     "Charge",
     "ChargeCreatedEvent",
@@ -36,8 +49,15 @@ __all__ = [
     "ChargeRefundedEvent",
     "ChargeStatus",
     "CreateChargeRequest",
+    "CreateInvoiceRequest",
     "Customer",
     "CustomerPart2BillingProfile",
+    "Invoice",
+    "InvoiceLineItem",
+    "InvoicePage",
+    "InvoiceStatus",
+    "InvoicesClient",
+    "Money",
     "PaymentMethod",
     "PaymentMethodType",
     "PaymentsClient",

@@ -4,7 +4,7 @@ import sys
 import pytest
 
 from httpxgen import OpenAPISpec, write_client
-from httpxgen.generator import GenerationError, generate_client
+from httpxgen.generator import GenerationError, generate_client, generate_workspace
 
 
 def test_generate_client_produces_a_complete_package(generatable_spec):
@@ -12,6 +12,7 @@ def test_generate_client_produces_a_complete_package(generatable_spec):
 
     assert set(files) == {
         "client.py",
+        "serialization.py",
         "models.py",
         "exceptions.py",
         "__init__.py",
@@ -23,11 +24,43 @@ def test_generate_client_produces_a_complete_package(generatable_spec):
     assert files["py.typed"] == ""
 
 
-def test_generate_client_supports_binary_request_bodies(reference_spec):
-    files = generate_client(reference_spec, "payments")
+def test_generate_client_keeps_shared_runtime_out_of_the_client_module(
+    generatable_spec,
+):
+    files = generate_client(generatable_spec, "payments")
 
-    assert "body: bytes" in files["client.py"]
-    assert "body_arguments['content'] = body" in files["client.py"]
+    assert "class PaymentsClient:" in files["client.py"]
+    assert "def serialize_path" not in files["client.py"]
+    assert "def apply_security" not in files["client.py"]
+    assert "def serialize_path" in files["serialization.py"]
+    assert "def apply_security" in files["serialization.py"]
+    assert (
+        '"bearerAuth": SecurityScheme("bearer", "header", "Authorization"'
+        in (files["serialization.py"])
+    )
+
+
+def test_generate_client_rejects_non_json_request_bodies():
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {
+                "/avatars": {
+                    "put": {
+                        "operationId": "uploadAvatar",
+                        "requestBody": {
+                            "required": True,
+                            "content": {"image/png": {"schema": {"type": "string"}}},
+                        },
+                        "responses": {"204": {}},
+                    }
+                }
+            },
+        }
+    )
+
+    with pytest.raises(GenerationError, match="unsupported request body media type"):
+        generate_client(spec, "avatars")
 
 
 def test_generate_client_renames_an_api_error_schema(reference_spec):
@@ -145,3 +178,39 @@ def test_generate_client_rejects_operation_names_reserved_by_the_client():
 
     with pytest.raises(GenerationError, match="client methods"):
         generate_client(spec, "collision")
+
+
+def test_generate_workspace_shares_support_modules_between_tag_packages(
+    generatable_spec,
+):
+    files = generate_workspace(generatable_spec, ["payments", "invoices"], "api")
+
+    assert set(files) == {
+        "__init__.py",
+        "py.typed",
+        "shared/__init__.py",
+        "shared/exceptions.py",
+        "shared/serialization.py",
+        "shared/models.py",
+        "payments/__init__.py",
+        "payments/client.py",
+        "payments/models.py",
+        "invoices/__init__.py",
+        "invoices/client.py",
+        "invoices/models.py",
+    }
+    assert "class ApiError(Exception):" in files["shared/exceptions.py"]
+    assert "def apply_security(" in files["shared/serialization.py"]
+    assert "class Money(BaseModel):" in files["shared/models.py"]
+    assert "class Charge(BaseEntity):" in files["payments/models.py"]
+    assert "class Invoice(BaseEntity):" in files["invoices/models.py"]
+    assert "class Charge" not in files["invoices/models.py"]
+    for tag in ("payments", "invoices"):
+        client = files[f"{tag}/client.py"]
+        assert "from api.shared import ApiError" in client
+        assert f"from api.{tag}.models import" in client
+        assert "class ApiError(Exception):" not in client
+        assert "def apply_security(" not in client
+    assert "from .invoices import InvoicesClient" in files["__init__.py"]
+    assert "from .payments import PaymentsClient" in files["__init__.py"]
+    assert "from .shared import ApiError" in files["__init__.py"]

@@ -15,7 +15,7 @@ def test_main_generates_a_package(tmp_path, monkeypatch, capsys):
     result = main()
 
     assert result == 0
-    assert "Generated 5 file(s)" in capsys.readouterr().out
+    assert "Generated 6 file(s)" in capsys.readouterr().out
     assert (output_path / "client.py").exists()
 
 

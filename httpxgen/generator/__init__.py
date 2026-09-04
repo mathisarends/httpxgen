@@ -1,4 +1,4 @@
-from .build import generate_client
+from .build import generate_client, generate_workspace
 from .errors import GenerationError
 
-__all__ = ["GenerationError", "generate_client"]
+__all__ = ["GenerationError", "generate_client", "generate_workspace"]
