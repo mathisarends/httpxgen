@@ -59,9 +59,8 @@ zu falschen Typen oder fehlendem Verhalten führen.
 - [x] `readOnly` und `writeOnly` durch getrennte Request-/Response-Modelle
   abbilden. Ein gemeinsames Modell kann derzeit auf einer Seite zu viel verlangen.
 - [x] Form-, Multipart- und Binär-Request-Bodies unterstützen
-- [ ] Mehrere Request-/Response-Content-Types derselben Operation explizit
-  modellieren. Aktuell wählt der Generator bevorzugt JSON, danach den ersten
-  unterstützten Response-Typ.
+- [x] Mehrere Request-/Response-Content-Types derselben Operation explizit
+  modellieren
 - [ ] `oneOf` als „genau eine Variante“ validieren. Ohne Discriminator verhält
   sich die erzeugte Pydantic-Union derzeit näher an `anyOf`.
 - [ ] `allOf`-Property-Konflikte zwischen Basismodellen erkennen und mit

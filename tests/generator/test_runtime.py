@@ -302,6 +302,92 @@ def test_generated_client_sends_form_multipart_and_binary_bodies(tmp_path):
             del sys.modules[name]
 
 
+def test_multiple_content_types_are_selected_and_parsed_explicitly(tmp_path):
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": "3.1.0",
+            "paths": {
+                "/convert": {
+                    "post": {
+                        "operationId": "convert",
+                        "requestBody": {
+                            "required": True,
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "required": ["value"],
+                                        "properties": {"value": {"type": "string"}},
+                                    }
+                                },
+                                "text/plain": {"schema": {"type": "string"}},
+                            },
+                        },
+                        "responses": {
+                            "200": {
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "required": ["value"],
+                                            "properties": {"value": {"type": "string"}},
+                                        }
+                                    },
+                                    "text/plain": {"schema": {"type": "string"}},
+                                }
+                            }
+                        },
+                    }
+                }
+            },
+        }
+    )
+    package_dir = tmp_path / "content_api"
+    write_client(spec=spec, package_dir=package_dir, package_name="content_api")
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            assert request.headers["Content-Type"] == "text/plain"
+            assert request.content == b"plain"
+            return httpx.Response(
+                200, text="text-result", headers={"Content-Type": "text/plain"}
+            )
+        assert request.headers["Content-Type"] == "application/json"
+        assert request.content == b'{"value":"json"}'
+        return httpx.Response(
+            200,
+            json={"value": "json-result"},
+            headers={"Content-Type": "application/json; charset=utf-8"},
+        )
+
+    sys.path.insert(0, str(tmp_path))
+    try:
+        package = importlib.import_module("content_api")
+        http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = package.ContentApiClient(http_client, "https://example.test")
+
+        async def exercise():
+            text = await client.convert("plain", content_type="text/plain")
+            assert text == "text-result"
+            body = package.ConvertBody(value="json")
+            result = await client.convert(body)
+            assert result.value == "json-result"
+            await client.aclose()
+
+        asyncio.run(exercise())
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in [
+            name
+            for name in sys.modules
+            if name == "content_api" or name.startswith("content_api.")
+        ]:
+            del sys.modules[name]
+
+
 def test_read_only_and_write_only_fields_use_directional_models(tmp_path):
     spec = OpenAPISpec.model_validate(
         {

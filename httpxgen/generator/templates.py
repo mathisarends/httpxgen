@@ -248,7 +248,7 @@ _OPERATION = """\
     async def {{ operation.name }}(
         self,
 {{ signature }}        *,
-        timeout: float | None = None,
+{{ content_type_argument }}        timeout: float | None = None,
     ) -> {{ return_annotation }}:
 {{ assignments }}
         response = await self._client.request(

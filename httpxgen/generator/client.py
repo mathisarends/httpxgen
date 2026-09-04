@@ -10,6 +10,7 @@ from httpxgen.generator.operations import (
     Operation,
     Parameter,
     Response,
+    ResponseContent,
     SecurityScheme,
     query_model_name,
     query_parameters,
@@ -99,6 +100,8 @@ def _render_client_imports(
     layout: Layout,
 ) -> str:
     typing_names = used_names(annotations, ("Literal",))
+    if any(len(_operation_bodies(operation)) > 1 for operation in operations):
+        typing_names.append("Literal")
     if any(_has_optional_body(operation) for operation in operations):
         typing_names.insert(0, "Any")
     typing_names.append("Self")
@@ -148,9 +151,10 @@ def _serialization_helpers(operations: Sequence[Operation]) -> list[str]:
 
 def _needs_type_adapter(operations: Sequence[Operation]) -> bool:
     return any(operation.body for operation in operations) or any(
-        response.kind == "json" and response.model_annotation is None
+        content.kind == "json" and content.model_annotation is None
         for operation in operations
         for response in operation.responses
+        for content in _response_contents(response)
     )
 
 
@@ -169,6 +173,14 @@ def _render_operation(operation: Operation) -> str:
         arguments.append((f"body: {annotation}{default}", operation.body_required))
     arguments.sort(key=lambda item: not item[1])
     signature = "".join(f"        {value},\n" for value, _ in arguments)
+    bodies = _operation_bodies(operation)
+    content_type_argument = ""
+    if len(bodies) > 1:
+        choices = ", ".join(string_literal(item.media_type) for item in bodies)
+        content_type_argument = (
+            f"        content_type: Literal[{choices}] = "
+            f"{string_literal(bodies[0].media_type)},\n"
+        )
     successes = [item.annotation for item in operation.responses if item.success]
     blocks = [
         _render_path(operation),
@@ -182,6 +194,7 @@ def _render_operation(operation: Operation) -> str:
         TemplateName.OPERATION,
         operation=operation,
         signature=signature,
+        content_type_argument=content_type_argument,
         return_annotation=" | ".join(dict.fromkeys(successes)),
         assignments="\n".join(block for block in blocks if block),
         request_arguments=_render_request_arguments(operation),
@@ -296,9 +309,24 @@ def _tuple_literal(names: Sequence[str]) -> str:
 
 
 def _render_body(operation: Operation) -> str:
-    body = operation.body
-    if body is None:
+    bodies = _operation_bodies(operation)
+    if not bodies:
         return ""
+    body = bodies[0]
+    if len(bodies) > 1:
+        lines = [f"{_INDENT}body_arguments: dict[str, Any] = {{}}\n"]
+        indent = _INDENT
+        if not body.required:
+            lines.append(f"{_INDENT}if body is not None:\n")
+            indent += "    "
+        for index, variant in enumerate(bodies):
+            keyword = "if" if index == 0 else "elif"
+            lines.append(
+                f"{indent}{keyword} content_type == "
+                f"{string_literal(variant.media_type)}:\n"
+            )
+            lines.extend(_render_body_variant(variant, indent + "    "))
+        return "".join(lines)
     if body.required:
         return "".join(_render_required_body(body))
 
@@ -307,44 +335,52 @@ def _render_body(operation: Operation) -> str:
         f"{_INDENT}if body is not None:\n",
     ]
     indent = f"{_INDENT}    "
+    lines.extend(_render_body_variant(body, indent))
+    return "".join(lines)
+
+
+def _render_body_variant(body: Body, indent: str) -> list[str]:
     if body.kind == "json":
-        lines.extend(
-            [
-                f'{indent}body_arguments["json"] = TypeAdapter(',
-                f"{body.annotation}).dump_python(\n",
-                f'{indent}    body, mode="json", by_alias=True, exclude_none=True\n',
-                f"{indent})\n",
-            ]
-        )
+        lines = [
+            f'{indent}body_arguments["json"] = TypeAdapter(',
+            f"{body.annotation}).dump_python(\n",
+            f'{indent}    body, mode="json", by_alias=True, exclude_none=True\n',
+            f"{indent})\n",
+        ]
     elif body.kind in {"form", "multipart"}:
-        lines.extend(
-            [
-                f"{indent}body_data = TypeAdapter({body.annotation}).dump_python(\n",
-                f'{indent}    body, mode="python", by_alias=True, exclude_none=True\n',
-                f"{indent})\n",
-            ]
-        )
+        lines = [
+            f"{indent}body_data = TypeAdapter({body.annotation}).dump_python(\n",
+            f'{indent}    body, mode="python", by_alias=True, exclude_none=True\n',
+            f"{indent})\n",
+        ]
         if body.kind == "form":
             lines.append(f'{indent}body_arguments["data"] = body_data\n')
         else:
             lines.extend(
                 [
                     f"{indent}files = {{}}\n",
-                    f"{indent}form = dict(body_data)\n",
+                    f"{indent}form_data = dict(body_data)\n",
                 ]
             )
             for name in body.binary_fields:
                 literal = string_literal(name)
                 lines.extend(
                     [
-                        f"{indent}if {literal} in form:\n",
-                        f"{indent}    files[{literal}] = form.pop({literal})\n",
+                        f"{indent}if {literal} in form_data:\n",
+                        f"{indent}    files[{literal}] = form_data.pop({literal})\n",
                     ]
                 )
-            lines.append(f"{indent}body_arguments.update(data=form, files=files)\n")
+            lines.append(
+                f"{indent}body_arguments.update(data=form_data, files=files)\n"
+            )
     else:
-        lines.append(f'{indent}body_arguments["content"] = body\n')
-    return "".join(lines)
+        lines = [f'{indent}body_arguments["content"] = body\n']
+    if _body_needs_content_type(body):
+        lines.append(
+            f'{indent}headers.setdefault("Content-Type", '
+            f"{string_literal(body.media_type)})\n"
+        )
+    return lines
 
 
 def _render_required_body(body: Body) -> list[str]:
@@ -392,9 +428,10 @@ def _render_request_arguments(operation: Operation) -> str:
     )
     if _needs_cookies(operation):
         arguments.append("cookies=cookies")
-    if operation.body is not None:
-        body = operation.body
-        if not body.required:
+    bodies = _operation_bodies(operation)
+    if bodies:
+        body = bodies[0]
+        if len(bodies) > 1 or not body.required:
             arguments.append("**body_arguments")
         elif body.kind == "json":
             arguments.append("json=json_body")
@@ -412,11 +449,19 @@ def _render_response_handling(responses: Sequence[Response]) -> str:
     lines: list[str] = []
     for response in responses:
         lines.append(f"        {_response_condition(response.status)}:\n")
-        expression = _response_expression(response)
-        if response.success:
-            lines.append(f"            return {expression}\n")
-        else:
+        contents = _response_contents(response)
+        if len(contents) <= 1:
+            expression = _response_expression(contents[0]) if contents else "None"
+            if response.success:
+                lines.append(f"            return {expression}\n")
+                continue
             lines.append(f"            parsed_body = {expression}\n")
+        else:
+            lines.extend(_render_content_response(contents))
+            if response.success:
+                lines.append("            return parsed_body\n")
+                continue
+        if not response.success:
             lines.append(
                 _wrap(
                     "raise ApiError(response.status_code, response.text, "
@@ -425,6 +470,42 @@ def _render_response_handling(responses: Sequence[Response]) -> str:
                 )
             )
     return "".join(lines)
+
+
+def _render_content_response(contents: Sequence[ResponseContent]) -> list[str]:
+    lines = [
+        '            response_content_type = response.headers.get("Content-Type", "")\n',
+        (
+            "            response_content_type = "
+            'response_content_type.split(";", 1)[0].lower()\n'
+        ),
+    ]
+    for index, content in enumerate(contents):
+        keyword = "if" if index == 0 else "elif"
+        normalized = content.media_type.split(";", 1)[0].strip().lower()
+        lines.extend(
+            [
+                (
+                    f"            {keyword} response_content_type == "
+                    f"{string_literal(normalized)}:\n"
+                ),
+                f"                parsed_body = {_response_expression(content)}\n",
+            ]
+        )
+    lines.extend(
+        [
+            "            else:\n",
+            "                raise ApiError(\n",
+            "                    response.status_code,\n",
+            (
+                '                    f"unsupported response Content-Type: '
+                '{response_content_type}",\n'
+            ),
+            "                    response=response,\n",
+            "                )\n",
+        ]
+    )
+    return lines
 
 
 def _response_condition(status: int | str) -> str:
@@ -436,8 +517,23 @@ def _response_condition(status: int | str) -> str:
     return f"if {lower} <= response.status_code < {lower + 100}"
 
 
-def _response_expression(response: Response) -> str:
+def _response_contents(response: Response) -> tuple[ResponseContent, ...]:
+    if response.contents:
+        return response.contents
     if response.kind == "empty" or response.annotation == "None":
+        return ()
+    return (
+        ResponseContent(
+            annotation=response.annotation,
+            model_annotation=response.model_annotation,
+            kind=response.kind,
+            media_type=response.media_type or "application/json",
+        ),
+    )
+
+
+def _response_expression(response: ResponseContent) -> str:
+    if response.annotation == "None":
         return "None"
     if response.kind == "binary":
         return "response.content"
@@ -450,15 +546,18 @@ def _response_expression(response: Response) -> str:
 
 def _accept_header(operation: Operation) -> str:
     accepted = dict.fromkeys(
-        response.media_type
+        content.media_type
         for response in operation.responses
-        if response.media_type is not None
+        for content in _response_contents(response)
     )
     return ", ".join(accepted)
 
 
 def _content_type_header(operation: Operation) -> str:
-    body = operation.body
+    bodies = _operation_bodies(operation)
+    if len(bodies) != 1:
+        return ""
+    body = bodies[0]
     if (
         body is None
         or body.kind in {"form", "multipart"}
@@ -477,6 +576,7 @@ def _needs_headers(operation: Operation) -> bool:
         _by_location(operation, "header")
         or _accept_header(operation)
         or _content_type_header(operation)
+        or any(_body_needs_content_type(body) for body in _operation_bodies(operation))
         or _security_uses(operation, "header")
     )
 
@@ -501,6 +601,19 @@ def _security_uses(operation: Operation, location: str) -> bool:
 
 def _has_optional_body(operation: Operation) -> bool:
     return operation.body is not None and not operation.body.required
+
+
+def _operation_bodies(operation: Operation) -> tuple[Body, ...]:
+    if operation.bodies:
+        return operation.bodies
+    return (operation.body,) if operation.body is not None else ()
+
+
+def _body_needs_content_type(body: Body) -> bool:
+    normalized = body.media_type.split(";", 1)[0].strip().lower()
+    return body.kind in {"text", "binary"} or (
+        body.kind == "json" and normalized != "application/json"
+    )
 
 
 _SERIALIZERS = {

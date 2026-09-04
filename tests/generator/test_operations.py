@@ -279,6 +279,42 @@ def test_request_body_encodings_are_read(
     )
 
 
+def test_multiple_request_and_response_content_types_are_kept():
+    spec = _spec_with_operation(
+        {
+            "operationId": "convert",
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "text/plain": {"schema": {"type": "string"}},
+                    "application/json": {"schema": {"type": "integer"}},
+                },
+            },
+            "responses": {
+                "200": {
+                    "content": {
+                        "text/plain": {"schema": {"type": "string"}},
+                        "application/json": {"schema": {"type": "integer"}},
+                    }
+                }
+            },
+        }
+    )
+
+    operation = read_operations(spec)[0]
+
+    assert [(body.media_type, body.kind) for body in operation.bodies] == [
+        ("application/json", "json"),
+        ("text/plain", "text"),
+    ]
+    assert operation.body_annotation == "int | str"
+    assert [content.media_type for content in operation.responses[0].contents] == [
+        "application/json",
+        "text/plain",
+    ]
+    assert operation.responses[0].annotation == "int | str"
+
+
 def test_referenced_enum_defaults_use_enum_members():
     spec = OpenAPISpec.model_validate(
         {

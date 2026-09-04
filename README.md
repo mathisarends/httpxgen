@@ -421,10 +421,12 @@ normal, non-trivial API:
 - The schema component named `ApiError` is generated as `ApiErrorModel` to avoid
   colliding with the runtime exception.
 
-When an operation offers several content types, httpxgen prefers JSON (including
-`+json`) and otherwise uses the first supported text or binary response type.
-Request bodies must be JSON. Pass the base URL explicitly: `servers` is not used
-as an implicit network destination.
+When an operation offers several request content types, its method exposes a
+typed `content_type` keyword and defaults to JSON (including `+json`) when
+available. Responses are decoded according to their actual `Content-Type`
+header; an undocumented type raises `ApiError` instead of being guessed. Pass
+the base URL explicitly: `servers` is not used as an implicit network
+destination.
 
 ## Scope
 
@@ -438,9 +440,9 @@ Pydantic models, enums, nullable values, discriminated unions, and practical
 `allOf` inheritance.
 
 Unsupported constructs fail generation where possible. Important remaining
-limitations are exact non-discriminated `oneOf` semantics, multiple selectable
-media types, response-header return models, external references, streaming,
-callbacks/webhooks, automatic pagination, and a synchronous client.
+limitations are exact non-discriminated `oneOf` semantics, response-header
+return models, external references, streaming, callbacks/webhooks, automatic
+pagination, and a synchronous client.
 
 See [`MISSING_IMPL.md`](MISSING_IMPL.md) for the prioritized checklist and the
 test requirements for each future step.
