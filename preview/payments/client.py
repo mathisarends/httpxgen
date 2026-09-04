@@ -20,9 +20,11 @@ from preview.payments.models import (
     Customer,
     CustomerProfileRequest,
     CustomerProfileResponse,
+    ImportCustomerProfileBody,
     ListChargesParams,
     PaymentMethod,
     PaymentMethodReference,
+    UploadCustomerAvatarBody,
 )
 from preview.shared import (
     ApiError,
@@ -185,6 +187,95 @@ class PaymentsClient:
 
         if response.status_code == 201:
             return CustomerProfileResponse.model_validate(response.json())
+
+        raise ApiError(response.status_code, response.text, response=response)
+
+    async def replace_customer_archive(
+        self,
+        body: bytes,
+        *,
+        timeout: float | None = None,
+    ) -> None:
+        path = "/customer-profiles/archive"
+
+        headers = dict(self._headers)
+        headers.setdefault("Content-Type", "application/octet-stream")
+
+        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+
+        response = await self._client.request(
+            method=HttpMethods.PUT,
+            url=f"{self._base_url}{path}",
+            headers=headers,
+            content=body,
+            timeout=self._timeout if timeout is None else timeout,
+        )
+
+        if response.status_code == 204:
+            return None
+
+        raise ApiError(response.status_code, response.text, response=response)
+
+    async def upload_customer_avatar(
+        self,
+        body: UploadCustomerAvatarBody,
+        *,
+        timeout: float | None = None,
+    ) -> None:
+        path = "/customer-profiles/avatar"
+
+        headers = dict(self._headers)
+
+        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+
+        body_data = TypeAdapter(UploadCustomerAvatarBody).dump_python(
+            body, mode="python", by_alias=True, exclude_none=True
+        )
+        form_data = dict(body_data)
+        files: dict[str, bytes] = {}
+        if "file" in form_data:
+            files["file"] = form_data.pop("file")
+
+        response = await self._client.request(
+            method=HttpMethods.POST,
+            url=f"{self._base_url}{path}",
+            headers=headers,
+            data=form_data,
+            files=files,
+            timeout=self._timeout if timeout is None else timeout,
+        )
+
+        if response.status_code == 204:
+            return None
+
+        raise ApiError(response.status_code, response.text, response=response)
+
+    async def import_customer_profile(
+        self,
+        body: ImportCustomerProfileBody,
+        *,
+        timeout: float | None = None,
+    ) -> None:
+        path = "/customer-profiles/import"
+
+        headers = dict(self._headers)
+
+        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+
+        form_data = TypeAdapter(ImportCustomerProfileBody).dump_python(
+            body, mode="python", by_alias=True, exclude_none=True
+        )
+
+        response = await self._client.request(
+            method=HttpMethods.POST,
+            url=f"{self._base_url}{path}",
+            headers=headers,
+            data=form_data,
+            timeout=self._timeout if timeout is None else timeout,
+        )
+
+        if response.status_code == 204:
+            return None
 
         raise ApiError(response.status_code, response.text, response=response)
 

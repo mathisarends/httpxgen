@@ -113,6 +113,66 @@ paths:
               schema:
                 $ref: "#/components/schemas/CustomerProfile"
 
+  /customer-profiles/import:
+    post:
+      operationId: importCustomerProfile
+      summary: Import profile fields from an HTML-style form
+      tags: [payments]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [display_name, email]
+              properties:
+                display_name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+      responses:
+        "204":
+          description: Imported
+
+  /customer-profiles/avatar:
+    post:
+      operationId: uploadCustomerAvatar
+      summary: Upload an avatar and its accessible description
+      tags: [payments]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, description]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                description:
+                  type: string
+      responses:
+        "204":
+          description: Uploaded
+
+  /customer-profiles/archive:
+    put:
+      operationId: replaceCustomerArchive
+      summary: Replace a profile archive with a raw binary payload
+      tags: [payments]
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "204":
+          description: Replaced
+
   /charges:
     post:
       operationId: createCharge

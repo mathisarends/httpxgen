@@ -21,11 +21,13 @@ from .models import (
     CustomerPart2BillingProfile,
     CustomerProfileRequest,
     CustomerProfileResponse,
+    ImportCustomerProfileBody,
     PaymentMethod,
     PaymentMethodFingerprintReference,
     PaymentMethodIdReference,
     PaymentMethodReference,
     PaymentMethodType,
+    UploadCustomerAvatarBody,
 )
 
 __all__ = [
@@ -45,10 +47,12 @@ __all__ = [
     "CustomerPart2BillingProfile",
     "CustomerProfileRequest",
     "CustomerProfileResponse",
+    "ImportCustomerProfileBody",
     "PaymentMethod",
     "PaymentMethodFingerprintReference",
     "PaymentMethodIdReference",
     "PaymentMethodReference",
     "PaymentMethodType",
     "PaymentsClient",
+    "UploadCustomerAvatarBody",
 ]

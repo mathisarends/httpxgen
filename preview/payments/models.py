@@ -178,6 +178,13 @@ class CustomerProfileResponse(BaseModel):
     display_name: str
 
 
+class ImportCustomerProfileBody(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    display_name: str
+    email: str
+
+
 class PaymentMethodFingerprintReference(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -197,6 +204,13 @@ PaymentMethodReference = Annotated[
         PaymentMethodFingerprintReference,
     ),
 ]
+
+
+class UploadCustomerAvatarBody(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    file: bytes
+    description: str
 
 
 class ListChargesParams(BaseModel):
