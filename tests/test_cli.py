@@ -19,6 +19,30 @@ def test_main_generates_a_package(tmp_path, monkeypatch, capsys):
     assert (output_path / "client.py").exists()
 
 
+def test_main_selects_httpx2_client_type(tmp_path, monkeypatch, capsys):
+    spec_path = tmp_path / "openapi.json"
+    output_path = tmp_path / "generated_client"
+    spec_path.write_text(json.dumps({"openapi": "3.1.0", "paths": {}}))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "httpxgen",
+            str(spec_path),
+            str(output_path),
+            "--http-client",
+            "httpx2",
+        ],
+    )
+
+    assert main() == 0
+    assert "Generated 8 file(s)" in capsys.readouterr().out
+    assert (
+        "from httpx2 import AsyncClient as AsyncHttpClient"
+        in (output_path / "transport.py").read_text()
+    )
+
+
 def test_main_reports_invalid_documents(tmp_path, monkeypatch, capsys):
     spec_path = tmp_path / "openapi.json"
     spec_path.write_text(json.dumps({"openapi": "2.0", "paths": {}}))

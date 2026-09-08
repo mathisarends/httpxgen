@@ -12,7 +12,6 @@ from pydantic import TypeAdapter
 from preview.invoices.models import (
     CreateInvoiceRequest,
     Invoice,
-    InvoiceLineItem,
     InvoicePage,
     InvoiceStatus,
     ListInvoicesParams,
@@ -35,14 +34,14 @@ from preview.shared.models import ApiErrorModel
 class InvoicesClient:
     def __init__(
         self,
-        client: AsyncHttpClient,
+        http_client: AsyncHttpClient,
         base_url: str,
         *,
         headers: Mapping[str, str] | None = None,
         credentials: Mapping[str, str | tuple[str, str]] | None = None,
         timeout: float = 30.0,
     ) -> None:
-        self._client = client
+        self._client = http_client
         self._base_url = base_url.rstrip("/")
         self._headers = dict(headers) if headers else {}
         self._credentials = dict(credentials) if credentials else {}

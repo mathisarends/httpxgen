@@ -1,7 +1,9 @@
 from collections import Counter
 from collections.abc import Sequence
+from typing import Literal
 
 from httpxgen.generator.client import Layout, render_client, render_serialization
+from httpxgen.generator.errors import GenerationError
 from httpxgen.generator.models import exported_model_names, render_models
 from httpxgen.generator.naming import class_name, identifier
 from httpxgen.generator.normalize import normalize_inline_schemas
@@ -26,12 +28,19 @@ from httpxgen.openapi import OpenAPISpec
 from httpxgen.selection import filter_operations_by_tags
 
 _SHARED = "shared"
+type HttpClientBackend = Literal["protocol", "httpx", "httpx2"]
+HTTP_CLIENT_BACKENDS = ("protocol", "httpx", "httpx2")
 
 
 def generate_client(
-    spec: OpenAPISpec, package_name: str, *, client_name: str | None = None
+    spec: OpenAPISpec,
+    package_name: str,
+    *,
+    client_name: str | None = None,
+    http_client: HttpClientBackend = "protocol",
 ) -> dict[str, str]:
     """Render a single client package as {relative path: file content}."""
+    _validate_http_client(http_client)
     spec = normalize_inline_schemas(spec)
     schemas = spec.components.schemas
     operations = read_operations(spec)
@@ -52,7 +61,9 @@ def generate_client(
                 TemplateName.EXCEPTIONS, transport_module=layout.transport
             ),
             "http_methods.py": render_template(TemplateName.HTTP_METHODS),
-            "transport.py": render_template(TemplateName.TRANSPORT),
+            "transport.py": render_template(
+                TemplateName.TRANSPORT, http_client=http_client
+            ),
             "serialization.py": render_serialization(read_security_schemes(spec)),
             "__init__.py": render_package_init(schemas, client_name, operations),
         }
@@ -65,8 +76,10 @@ def generate_workspace(
     package_name: str,
     *,
     schema_tags: Sequence[str] = (),
+    http_client: HttpClientBackend = "protocol",
 ) -> dict[str, str]:
     """Render one client package per tag around a shared support package."""
+    _validate_http_client(http_client)
     tags = tuple(dict.fromkeys(tags))
     spec = normalize_inline_schemas(
         filter_operations_by_tags(spec, tags, schema_tags=schema_tags)
@@ -92,7 +105,9 @@ def generate_workspace(
             TemplateName.EXCEPTIONS, transport_module=f"{shared_module}.transport"
         ),
         f"{_SHARED}/http_methods.py": render_template(TemplateName.HTTP_METHODS),
-        f"{_SHARED}/transport.py": render_template(TemplateName.TRANSPORT),
+        f"{_SHARED}/transport.py": render_template(
+            TemplateName.TRANSPORT, http_client=http_client
+        ),
         f"{_SHARED}/serialization.py": render_serialization(
             read_security_schemes(spec)
         ),
@@ -170,3 +185,11 @@ def _finish(files: dict[str, str]) -> dict[str, str]:
         relative: f"{GENERATED_HEADER}\n\n{content.rstrip()}\n"
         for relative, content in files.items()
     } | {"py.typed": ""}
+
+
+def _validate_http_client(http_client: str) -> None:
+    if http_client not in HTTP_CLIENT_BACKENDS:
+        choices = ", ".join(HTTP_CLIENT_BACKENDS)
+        raise GenerationError(
+            f"unsupported HTTP client {http_client!r}; choose one of: {choices}"
+        )

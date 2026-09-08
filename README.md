@@ -404,7 +404,7 @@ from payments import ApiError, Charge, ChargeStatus, Money, PaymentsClient
 ## CLI reference
 
 ```
-httpxgen OPENAPI OUTPUT [--package-name NAME] [--client-name NAME] [--tag TAG] [--schema-tag TAG] [--check]
+httpxgen OPENAPI OUTPUT [--package-name NAME] [--client-name NAME] [--http-client {protocol,httpx,httpx2}] [--tag TAG] [--schema-tag TAG] [--check]
 ```
 
 | Argument | Meaning |
@@ -413,6 +413,7 @@ httpxgen OPENAPI OUTPUT [--package-name NAME] [--client-name NAME] [--tag TAG] [
 | `OUTPUT` | target package directory, or the root holding one package per tag when several `--tag` are given (created if missing) |
 | `--package-name` | complete generated import package; defaults to the output directory name |
 | `--client-name` | exact single-client class name; not available for multi-tag workspaces |
+| `--http-client` | HTTP client annotation: `protocol` supports both implementations (default), or bind generated code directly to `httpx` or `httpx2` |
 | `--tag TAG` | generate only operations carrying this tag; repeat it for one package per tag |
 | `--schema-tag TAG` | keep schemas referenced by this tag without generating its operations; repeatable |
 | `--check` | write nothing; exit non-zero when the checked-in output is stale |
@@ -433,8 +434,13 @@ verbatim when the API needs a different public identity:
 ```sh
 httpxgen openapi.json src/generated/browser_worker \
   --package-name generated.browser_worker \
-  --client-name ProvisionerClient
+  --client-name ProvisionerClient \
+  --http-client httpx2
 ```
+
+Keep the default `protocol` when the same generated package should accept both
+`httpx.AsyncClient` and `httpx2.AsyncClient` without a runtime dependency on
+either implementation.
 
 Repeat `--tag` and you get one client package per tag. The exception hierarchy,
 transport types, `HttpMethods`, and serialization helpers are generated once in

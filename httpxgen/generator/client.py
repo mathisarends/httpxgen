@@ -49,6 +49,7 @@ def render_client(
                 field.annotation
                 for op in operations
                 for body in _operation_bodies(op)
+                if body.kind == "multipart"
                 for field in body.multipart_fields
             ),
             *(op.body_annotation or "" for op in operations),

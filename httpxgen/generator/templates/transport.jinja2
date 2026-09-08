@@ -1,7 +1,13 @@
 from collections.abc import AsyncIterable, AsyncIterator, Iterable, Mapping
 from dataclasses import dataclass
 from email.message import Message
+{% if http_client == "protocol" %}
 from typing import Any, BinaryIO, Protocol, runtime_checkable
+{% else %}
+from typing import Any, BinaryIO, Protocol
+
+from {{ http_client }} import AsyncClient as AsyncHttpClient
+{% endif %}
 
 type BinaryContent = bytes | Iterable[bytes] | AsyncIterable[bytes]
 
@@ -23,6 +29,7 @@ class HttpResponse(Protocol):
     async def aread(self) -> bytes: ...
 
 
+{% if http_client == "protocol" %}
 class AsyncResponseContextManager(Protocol):
     async def __aenter__(self) -> HttpResponse: ...
 
@@ -38,6 +45,7 @@ class AsyncHttpClient(Protocol):
     ) -> AsyncResponseContextManager: ...
 
     async def aclose(self) -> None: ...
+{% endif %}
 
 
 @dataclass(frozen=True)

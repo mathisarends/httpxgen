@@ -21,8 +21,8 @@ def test_render_client_handles_an_api_without_operations():
     source = render_client((), {}, "EmptyClient", _LAYOUT)
 
     assert "class EmptyClient:" in source
-    assert "client: AsyncHttpClient" in source
-    assert "self._client = client" in source
+    assert "http_client: AsyncHttpClient" in source
+    assert "self._client = http_client" in source
     assert "async def __aenter__(self) -> Self:" in source
     assert "def serialize_path" not in source
 

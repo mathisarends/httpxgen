@@ -29,6 +29,12 @@ def main() -> int:
         help="exact class name for a single generated client",
     )
     parser.add_argument(
+        "--http-client",
+        choices=("protocol", "httpx", "httpx2"),
+        default="protocol",
+        help="generated HTTP client type (default: protocol, compatible with both)",
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="do not write; fail when generated output is stale",
@@ -71,6 +77,7 @@ def main() -> int:
             client_name=args.client_name,
             tags=args.tags,
             schema_tags=args.schema_tags,
+            http_client=args.http_client,
             check=args.check,
         )
     except (GenerationError, OSError, ValueError) as error:

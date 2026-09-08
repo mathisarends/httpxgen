@@ -2,6 +2,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from httpxgen.generator import GenerationError, generate_client, generate_workspace
+from httpxgen.generator.build import HttpClientBackend
 from httpxgen.generator.templates import GENERATED_HEADER
 from httpxgen.openapi import OpenAPISpec
 
@@ -20,6 +21,7 @@ def write_client(
     client_name: str | None = None,
     tags: Sequence[str] = (),
     schema_tags: Sequence[str] = (),
+    http_client: HttpClientBackend = "protocol",
     check: bool = False,
 ) -> list[Path]:
     name = package_name or package_dir.name
@@ -29,9 +31,20 @@ def write_client(
             "are derived from tags"
         )
     rendered = (
-        generate_workspace(spec, tags, name, schema_tags=schema_tags)
+        generate_workspace(
+            spec,
+            tags,
+            name,
+            schema_tags=schema_tags,
+            http_client=http_client,
+        )
         if len(tags) > 1
-        else generate_client(spec, name, client_name=client_name)
+        else generate_client(
+            spec,
+            name,
+            client_name=client_name,
+            http_client=http_client,
+        )
     )
     output = _managed_output(package_dir, rendered)
     changed = _changed_files(package_dir, output)

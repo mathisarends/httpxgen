@@ -1,5 +1,6 @@
 import importlib
 import sys
+from typing import Any, cast
 
 import pytest
 
@@ -42,6 +43,52 @@ def test_generate_client_keeps_shared_runtime_out_of_the_client_module(
         '"bearerAuth": SecurityScheme("bearer", "header", "Authorization"'
         in (files["serialization.py"])
     )
+
+
+@pytest.mark.parametrize("http_client", ["httpx", "httpx2"])
+def test_generate_client_can_bind_a_concrete_http_client(generatable_spec, http_client):
+    files = generate_client(
+        generatable_spec,
+        "payments",
+        http_client=http_client,
+    )
+
+    assert (
+        f"from {http_client} import AsyncClient as AsyncHttpClient"
+        in files["transport.py"]
+    )
+    assert "class AsyncHttpClient(Protocol):" not in files["transport.py"]
+
+
+def test_generate_client_defaults_to_transport_protocol(generatable_spec):
+    transport = generate_client(generatable_spec, "payments")["transport.py"]
+
+    assert "class AsyncHttpClient(Protocol):" in transport
+    assert "from httpx import AsyncClient" not in transport
+    assert "from httpx2 import AsyncClient" not in transport
+
+
+def test_generate_workspace_binds_http_client_in_shared_transport(generatable_spec):
+    files = generate_workspace(
+        generatable_spec,
+        ["payments", "invoices"],
+        "api",
+        http_client="httpx2",
+    )
+
+    assert (
+        "from httpx2 import AsyncClient as AsyncHttpClient"
+        in files["shared/transport.py"]
+    )
+
+
+def test_generate_client_rejects_unknown_http_client(generatable_spec):
+    with pytest.raises(GenerationError, match="unsupported HTTP client"):
+        generate_client(
+            generatable_spec,
+            "payments",
+            http_client=cast(Any, "requests"),
+        )
 
 
 def test_generate_client_rejects_non_json_request_bodies():
@@ -264,6 +311,10 @@ def test_generate_workspace_shares_support_modules_between_tag_packages(
     assert "class Charge(BaseEntity, AuditInfo):" in files["payments/models.py"]
     assert "class Invoice(BaseEntity):" in files["invoices/models.py"]
     assert "class Charge" not in files["invoices/models.py"]
+    assert "    InvoiceLineItem," not in files["invoices/client.py"]
+    assert "from api.shared.models import ApiErrorModel, Money" not in files[
+        "payments/client.py"
+    ]
     for tag in ("payments", "invoices"):
         client = files[f"{tag}/client.py"]
         assert "    ApiError," in client
