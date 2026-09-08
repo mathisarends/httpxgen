@@ -7,7 +7,6 @@ from collections.abc import Mapping
 from typing import Any, Literal, Self
 from uuid import UUID
 
-import httpx
 from pydantic import TypeAdapter
 
 from preview.payments.models import (
@@ -25,22 +24,31 @@ from preview.payments.models import (
     ListChargesParams,
     PaymentMethod,
     PaymentMethodReference,
-    UploadCustomerAvatarBody,
 )
 from preview.shared import (
     ApiError,
+    AsyncHttpClient,
+    BinaryContent,
+    ClientError,
+    FilePart,
     HttpMethods,
+    RequestValidationError,
+    ResponseValidationError,
+    TransportError,
+    UploadInput,
     apply_security,
+    scalar,
     serialize_path,
     serialize_query,
+    upload_file_part,
 )
-from preview.shared.models import ApiErrorModel
+from preview.shared.models import ApiErrorModel, Money
 
 
 class PaymentsClient:
     def __init__(
         self,
-        client: httpx.AsyncClient,
+        client: AsyncHttpClient,
         base_url: str,
         *,
         headers: Mapping[str, str] | None = None,
@@ -54,7 +62,7 @@ class PaymentsClient:
         self._timeout = timeout
 
     async def aclose(self) -> None:
-        await self._client.aclose()
+        """Release wrapper resources without closing the borrowed HTTP client."""
 
     async def __aenter__(self) -> Self:
         return self
@@ -70,37 +78,56 @@ class PaymentsClient:
         *,
         timeout: float | None = None,
     ) -> ChargePage:
-        path = "/charges"
+        try:
+            path = "/charges"
 
-        params = ListChargesParams(
-            status=status,
-            cursor=cursor,
-            page_size=page_size,
-        )
-        query: list[tuple[str, str]] = []
-        if params.status is not None:
-            query.extend(serialize_query("status", params.status))
-        if params.cursor is not None:
-            query.extend(serialize_query("cursor", params.cursor))
-        query.extend(serialize_query("page_size", params.page_size))
+            params = ListChargesParams(
+                status=status,
+                cursor=cursor,
+                page_size=page_size,
+            )
+            query: list[tuple[str, str]] = []
+            if params.status is not None:
+                query.extend(serialize_query("status", params.status))
+            if params.cursor is not None:
+                query.extend(serialize_query("cursor", params.cursor))
+            query.extend(serialize_query("page_size", params.page_size))
 
-        headers = dict(self._headers)
-        headers.setdefault("Accept", "application/json")
+            headers = dict(self._headers)
+            headers.setdefault("Accept", "application/json")
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, query, {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, query, {})
 
-        response = await self._client.request(
-            method=HttpMethods.GET,
-            url=f"{self._base_url}{path}",
-            params=query,
-            headers=headers,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
 
-        if response.status_code == 200:
-            return ChargePage.model_validate(response.json())
+        try:
+            response = await self._client.request(
+                method=HttpMethods.GET,
+                url=f"{self._base_url}{path}",
+                params=query,
+                headers=headers,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 200:
+                return ChargePage.model_validate(response.json())
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 
     async def create_charge(
         self,
@@ -108,48 +135,67 @@ class PaymentsClient:
         *,
         timeout: float | None = None,
     ) -> CreateChargeResult201:
-        path = "/charges"
+        try:
+            path = "/charges"
 
-        headers = dict(self._headers)
-        headers.setdefault("Accept", "application/json")
+            headers = dict(self._headers)
+            headers.setdefault("Accept", "application/json")
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        json_body = TypeAdapter(CreateChargeRequest).dump_python(
-            body, mode="json", by_alias=True, exclude_none=True
-        )
-
-        response = await self._client.request(
-            method=HttpMethods.POST,
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            json=json_body,
-            timeout=self._timeout if timeout is None else timeout,
-        )
-
-        if response.status_code == 201:
-            return CreateChargeResult201(
-                body=Charge.model_validate(response.json()),
-                x_request_id=(
-                    TypeAdapter(UUID).validate_python(
-                        response.headers["X-Request-ID"]
-                    )
-                    if "X-Request-ID" in response.headers
-                    else None
-                ),
-                x_rate_limit_remaining=(
-                    TypeAdapter(int).validate_python(
-                        response.headers["X-RateLimit-Remaining"]
-                    )
-                    if "X-RateLimit-Remaining" in response.headers
-                    else None
-                ),
+            json_body = TypeAdapter(CreateChargeRequest).dump_python(
+                body, mode="json", by_alias=True, exclude_none=True
             )
-        if response.status_code == 402:
-            parsed_body = ChargeError.model_validate(response.json())
-            raise ApiError(response.status_code, response.text, parsed_body, response)
 
-        raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
+
+        try:
+            response = await self._client.request(
+                method=HttpMethods.POST,
+                url=f"{self._base_url}{path}",
+                headers=headers,
+                json=json_body,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
+
+        try:
+            if response.status_code == 201:
+                return CreateChargeResult201(
+                    body=Charge.model_validate(response.json()),
+                    x_request_id=(
+                        TypeAdapter(UUID).validate_python(
+                            response.headers["X-Request-ID"]
+                        )
+                        if "X-Request-ID" in response.headers
+                        else None
+                    ),
+                    x_rate_limit_remaining=(
+                        TypeAdapter(int).validate_python(
+                            response.headers["X-RateLimit-Remaining"]
+                        )
+                        if "X-RateLimit-Remaining" in response.headers
+                        else None
+                    ),
+                )
+            if response.status_code == 402:
+                detail = ChargeError.model_validate(response.json())
+                raise ApiError(response.status_code, response.text, detail, response)
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 
     async def list_charge_events(
         self,
@@ -157,25 +203,44 @@ class PaymentsClient:
         *,
         timeout: float | None = None,
     ) -> list[ChargeEvent]:
-        path = "/charges/{chargeId}/events"
-        path = path.replace("{chargeId}", serialize_path("chargeId", charge_id))
+        try:
+            path = "/charges/{chargeId}/events"
+            path = path.replace("{chargeId}", serialize_path("chargeId", charge_id))
 
-        headers = dict(self._headers)
-        headers.setdefault("Accept", "application/json")
+            headers = dict(self._headers)
+            headers.setdefault("Accept", "application/json")
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        response = await self._client.request(
-            method=HttpMethods.GET,
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
 
-        if response.status_code == 200:
-            return TypeAdapter(list[ChargeEvent]).validate_python(response.json())
+        try:
+            response = await self._client.request(
+                method=HttpMethods.GET,
+                url=f"{self._base_url}{path}",
+                headers=headers,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 200:
+                return TypeAdapter(list[ChargeEvent]).validate_python(response.json())
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 
     async def create_customer_profile(
         self,
@@ -183,89 +248,145 @@ class PaymentsClient:
         *,
         timeout: float | None = None,
     ) -> CustomerProfileResponse:
-        path = "/customer-profiles"
+        try:
+            path = "/customer-profiles"
 
-        headers = dict(self._headers)
-        headers.setdefault("Accept", "application/json")
+            headers = dict(self._headers)
+            headers.setdefault("Accept", "application/json")
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        json_body = TypeAdapter(CustomerProfileRequest).dump_python(
-            body, mode="json", by_alias=True, exclude_none=True
-        )
+            json_body = TypeAdapter(CustomerProfileRequest).dump_python(
+                body, mode="json", by_alias=True, exclude_none=True
+            )
 
-        response = await self._client.request(
-            method=HttpMethods.POST,
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            json=json_body,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
 
-        if response.status_code == 201:
-            return CustomerProfileResponse.model_validate(response.json())
+        try:
+            response = await self._client.request(
+                method=HttpMethods.POST,
+                url=f"{self._base_url}{path}",
+                headers=headers,
+                json=json_body,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 201:
+                return CustomerProfileResponse.model_validate(response.json())
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 
     async def replace_customer_archive(
         self,
-        body: bytes,
+        body: BinaryContent,
         *,
         timeout: float | None = None,
     ) -> None:
-        path = "/customer-profiles/archive"
+        try:
+            path = "/customer-profiles/archive"
 
-        headers = dict(self._headers)
-        headers.setdefault("Content-Type", "application/octet-stream")
+            headers = dict(self._headers)
+            headers.setdefault("Content-Type", "application/octet-stream")
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        response = await self._client.request(
-            method=HttpMethods.PUT,
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            content=body,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
 
-        if response.status_code == 204:
-            return None
+        try:
+            response = await self._client.request(
+                method=HttpMethods.PUT,
+                url=f"{self._base_url}{path}",
+                headers=headers,
+                content=body,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 204:
+                return None
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 
     async def upload_customer_avatar(
         self,
-        body: UploadCustomerAvatarBody,
+        file: UploadInput,
+        description: str,
         *,
         timeout: float | None = None,
     ) -> None:
-        path = "/customer-profiles/avatar"
+        try:
+            path = "/customer-profiles/avatar"
 
-        headers = dict(self._headers)
+            headers = dict(self._headers)
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        body_data = TypeAdapter(UploadCustomerAvatarBody).dump_python(
-            body, mode="python", by_alias=True, exclude_none=True
-        )
-        form_data = dict(body_data)
-        files: dict[str, bytes] = {}
-        if "file" in form_data:
-            files["file"] = form_data.pop("file")
+            files: list[tuple[str, FilePart]] = []
+            files.append(("file", upload_file_part(file)))
+            files.append((
+                "description",
+                (None, scalar(description), None, {}),
+            ))
 
-        response = await self._client.request(
-            method=HttpMethods.POST,
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            data=form_data,
-            files=files,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
 
-        if response.status_code == 204:
-            return None
+        try:
+            response = await self._client.request(
+                method=HttpMethods.POST,
+                url=f"{self._base_url}{path}",
+                headers=headers,
+                files=files,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 204:
+                return None
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 
     async def convert_customer_profile(
         self,
@@ -274,46 +395,63 @@ class PaymentsClient:
         content_type: Literal["application/json", "text/plain"] = "application/json",
         timeout: float | None = None,
     ) -> CustomerProfileResponse | str:
-        path = "/customer-profiles/convert"
+        try:
+            path = "/customer-profiles/convert"
 
-        headers = dict(self._headers)
-        headers.setdefault("Accept", "application/json, text/plain")
+            headers = dict(self._headers)
+            headers.setdefault("Accept", "application/json, text/plain")
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        body_arguments: dict[str, Any] = {}
-        if content_type == "application/json":
-            body_arguments["json"] = TypeAdapter(CustomerProfileRequest).dump_python(
-                body, mode="json", by_alias=True, exclude_none=True
-            )
-        elif content_type == "text/plain":
-            body_arguments["content"] = body
-            headers.setdefault("Content-Type", "text/plain")
-
-        response = await self._client.request(
-            method=HttpMethods.POST,
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            **body_arguments,
-            timeout=self._timeout if timeout is None else timeout,
-        )
-
-        if response.status_code == 200:
-            response_content_type = response.headers.get("Content-Type", "")
-            response_content_type = response_content_type.split(";", 1)[0].lower()
-            if response_content_type == "application/json":
-                parsed_body = CustomerProfileResponse.model_validate(response.json())
-            elif response_content_type == "text/plain":
-                parsed_body = response.text
-            else:
-                raise ApiError(
-                    response.status_code,
-                    f"unsupported response Content-Type: {response_content_type}",
-                    response=response,
+            body_arguments: dict[str, Any] = {}
+            if content_type == "application/json":
+                body_arguments["json"] = TypeAdapter(CustomerProfileRequest).dump_python(
+                    body, mode="json", by_alias=True, exclude_none=True
                 )
-            return parsed_body
+            elif content_type == "text/plain":
+                body_arguments["content"] = body
+                headers.setdefault("Content-Type", "text/plain")
 
-        raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
+
+        try:
+            response = await self._client.request(
+                method=HttpMethods.POST,
+                url=f"{self._base_url}{path}",
+                headers=headers,
+                **body_arguments,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
+
+        try:
+            if response.status_code == 200:
+                response_content_type = response.headers.get("Content-Type", "")
+                response_content_type = response_content_type.split(";", 1)[0].lower()
+                if response_content_type == "application/json":
+                    detail = CustomerProfileResponse.model_validate(response.json())
+                elif response_content_type == "text/plain":
+                    detail = response.text
+                else:
+                    raise ValueError(
+                        f"unsupported response Content-Type: {response_content_type}"
+                    )
+                return detail
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 
     async def import_customer_profile(
         self,
@@ -321,28 +459,47 @@ class PaymentsClient:
         *,
         timeout: float | None = None,
     ) -> None:
-        path = "/customer-profiles/import"
+        try:
+            path = "/customer-profiles/import"
 
-        headers = dict(self._headers)
+            headers = dict(self._headers)
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        form_data = TypeAdapter(ImportCustomerProfileBody).dump_python(
-            body, mode="python", by_alias=True, exclude_none=True
-        )
+            form_data = TypeAdapter(ImportCustomerProfileBody).dump_python(
+                body, mode="python", by_alias=True, exclude_none=True
+            )
 
-        response = await self._client.request(
-            method=HttpMethods.POST,
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            data=form_data,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
 
-        if response.status_code == 204:
-            return None
+        try:
+            response = await self._client.request(
+                method=HttpMethods.POST,
+                url=f"{self._base_url}{path}",
+                headers=headers,
+                data=form_data,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 204:
+                return None
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 
     async def get_customer(
         self,
@@ -350,26 +507,45 @@ class PaymentsClient:
         *,
         timeout: float | None = None,
     ) -> Customer:
-        path = "/customers/{customerId}"
-        path = path.replace("{customerId}", serialize_path("customerId", customer_id))
+        try:
+            path = "/customers/{customerId}"
+            path = path.replace("{customerId}", serialize_path("customerId", customer_id))
 
-        headers = dict(self._headers)
-        headers.setdefault("Accept", "application/json")
+            headers = dict(self._headers)
+            headers.setdefault("Accept", "application/json")
 
-        response = await self._client.request(
-            method=HttpMethods.GET,
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
 
-        if response.status_code == 200:
-            return Customer.model_validate(response.json())
-        if response.status_code == 404:
-            parsed_body = ApiErrorModel.model_validate(response.json())
-            raise ApiError(response.status_code, response.text, parsed_body, response)
+        try:
+            response = await self._client.request(
+                method=HttpMethods.GET,
+                url=f"{self._base_url}{path}",
+                headers=headers,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 200:
+                return Customer.model_validate(response.json())
+            if response.status_code == 404:
+                detail = ApiErrorModel.model_validate(response.json())
+                raise ApiError(response.status_code, response.text, detail, response)
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 
     async def create_payment_method(
         self,
@@ -377,29 +553,48 @@ class PaymentsClient:
         *,
         timeout: float | None = None,
     ) -> PaymentMethod:
-        path = "/payment-methods"
+        try:
+            path = "/payment-methods"
 
-        headers = dict(self._headers)
-        headers.setdefault("Accept", "application/json")
+            headers = dict(self._headers)
+            headers.setdefault("Accept", "application/json")
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        json_body = TypeAdapter(PaymentMethod).dump_python(
-            body, mode="json", by_alias=True, exclude_none=True
-        )
+            json_body = TypeAdapter(PaymentMethod).dump_python(
+                body, mode="json", by_alias=True, exclude_none=True
+            )
 
-        response = await self._client.request(
-            method=HttpMethods.POST,
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            json=json_body,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
 
-        if response.status_code == 201:
-            return TypeAdapter(PaymentMethod).validate_python(response.json())
+        try:
+            response = await self._client.request(
+                method=HttpMethods.POST,
+                url=f"{self._base_url}{path}",
+                headers=headers,
+                json=json_body,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 201:
+                return TypeAdapter(PaymentMethod).validate_python(response.json())
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 
     async def lookup_payment_method(
         self,
@@ -407,26 +602,45 @@ class PaymentsClient:
         *,
         timeout: float | None = None,
     ) -> PaymentMethod:
-        path = "/payment-methods/lookup"
+        try:
+            path = "/payment-methods/lookup"
 
-        headers = dict(self._headers)
-        headers.setdefault("Accept", "application/json")
+            headers = dict(self._headers)
+            headers.setdefault("Accept", "application/json")
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        json_body = TypeAdapter(PaymentMethodReference).dump_python(
-            body, mode="json", by_alias=True, exclude_none=True
-        )
+            json_body = TypeAdapter(PaymentMethodReference).dump_python(
+                body, mode="json", by_alias=True, exclude_none=True
+            )
 
-        response = await self._client.request(
-            method=HttpMethods.POST,
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            json=json_body,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
 
-        if response.status_code == 200:
-            return TypeAdapter(PaymentMethod).validate_python(response.json())
+        try:
+            response = await self._client.request(
+                method=HttpMethods.POST,
+                url=f"{self._base_url}{path}",
+                headers=headers,
+                json=json_body,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 200:
+                return TypeAdapter(PaymentMethod).validate_python(response.json())
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error

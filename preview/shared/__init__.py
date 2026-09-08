@@ -3,7 +3,13 @@
 # ============================================================================
 
 
-from .exceptions import ApiError
+from .exceptions import (
+    ApiError,
+    ClientError,
+    RequestValidationError,
+    ResponseValidationError,
+    TransportError,
+)
 from .http_methods import HttpMethods
 from .serialization import (
     Credential,
@@ -14,15 +20,37 @@ from .serialization import (
     serialize_query,
     serialize_simple,
 )
+from .transport import (
+    AsyncHttpClient,
+    BinaryContent,
+    BinaryStream,
+    FilePart,
+    HttpResponse,
+    UploadFile,
+    UploadInput,
+    upload_file_part,
+)
 
 __all__ = [
     "ApiError",
+    "AsyncHttpClient",
+    "BinaryContent",
+    "BinaryStream",
+    "ClientError",
     "Credential",
+    "FilePart",
     "HttpMethods",
+    "HttpResponse",
+    "RequestValidationError",
+    "ResponseValidationError",
     "SecurityScheme",
+    "TransportError",
+    "UploadFile",
+    "UploadInput",
     "apply_security",
     "scalar",
     "serialize_path",
     "serialize_query",
     "serialize_simple",
+    "upload_file_part",
 ]

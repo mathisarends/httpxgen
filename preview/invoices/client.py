@@ -7,19 +7,24 @@ from collections.abc import Mapping
 from typing import Self
 from uuid import UUID
 
-import httpx
 from pydantic import TypeAdapter
 
 from preview.invoices.models import (
     CreateInvoiceRequest,
     Invoice,
+    InvoiceLineItem,
     InvoicePage,
     InvoiceStatus,
     ListInvoicesParams,
 )
 from preview.shared import (
     ApiError,
+    AsyncHttpClient,
+    ClientError,
     HttpMethods,
+    RequestValidationError,
+    ResponseValidationError,
+    TransportError,
     apply_security,
     serialize_path,
     serialize_query,
@@ -30,7 +35,7 @@ from preview.shared.models import ApiErrorModel
 class InvoicesClient:
     def __init__(
         self,
-        client: httpx.AsyncClient,
+        client: AsyncHttpClient,
         base_url: str,
         *,
         headers: Mapping[str, str] | None = None,
@@ -44,7 +49,7 @@ class InvoicesClient:
         self._timeout = timeout
 
     async def aclose(self) -> None:
-        await self._client.aclose()
+        """Release wrapper resources without closing the borrowed HTTP client."""
 
     async def __aenter__(self) -> Self:
         return self
@@ -60,37 +65,56 @@ class InvoicesClient:
         *,
         timeout: float | None = None,
     ) -> InvoicePage:
-        path = "/invoices"
+        try:
+            path = "/invoices"
 
-        params = ListInvoicesParams(
-            status=status,
-            cursor=cursor,
-            page_size=page_size,
-        )
-        query: list[tuple[str, str]] = []
-        if params.status is not None:
-            query.extend(serialize_query("status", params.status))
-        if params.cursor is not None:
-            query.extend(serialize_query("cursor", params.cursor))
-        query.extend(serialize_query("page_size", params.page_size))
+            params = ListInvoicesParams(
+                status=status,
+                cursor=cursor,
+                page_size=page_size,
+            )
+            query: list[tuple[str, str]] = []
+            if params.status is not None:
+                query.extend(serialize_query("status", params.status))
+            if params.cursor is not None:
+                query.extend(serialize_query("cursor", params.cursor))
+            query.extend(serialize_query("page_size", params.page_size))
 
-        headers = dict(self._headers)
-        headers.setdefault("Accept", "application/json")
+            headers = dict(self._headers)
+            headers.setdefault("Accept", "application/json")
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, query, {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, query, {})
 
-        response = await self._client.request(
-            method=HttpMethods.GET,
-            url=f"{self._base_url}{path}",
-            params=query,
-            headers=headers,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
 
-        if response.status_code == 200:
-            return InvoicePage.model_validate(response.json())
+        try:
+            response = await self._client.request(
+                method=HttpMethods.GET,
+                url=f"{self._base_url}{path}",
+                params=query,
+                headers=headers,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 200:
+                return InvoicePage.model_validate(response.json())
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 
     async def create_invoice(
         self,
@@ -98,32 +122,51 @@ class InvoicesClient:
         *,
         timeout: float | None = None,
     ) -> Invoice:
-        path = "/invoices"
+        try:
+            path = "/invoices"
 
-        headers = dict(self._headers)
-        headers.setdefault("Accept", "application/json")
+            headers = dict(self._headers)
+            headers.setdefault("Accept", "application/json")
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        json_body = TypeAdapter(CreateInvoiceRequest).dump_python(
-            body, mode="json", by_alias=True, exclude_none=True
-        )
+            json_body = TypeAdapter(CreateInvoiceRequest).dump_python(
+                body, mode="json", by_alias=True, exclude_none=True
+            )
 
-        response = await self._client.request(
-            method=HttpMethods.POST,
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            json=json_body,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
 
-        if response.status_code == 201:
-            return Invoice.model_validate(response.json())
-        if response.status_code == 422:
-            parsed_body = ApiErrorModel.model_validate(response.json())
-            raise ApiError(response.status_code, response.text, parsed_body, response)
+        try:
+            response = await self._client.request(
+                method=HttpMethods.POST,
+                url=f"{self._base_url}{path}",
+                headers=headers,
+                json=json_body,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 201:
+                return Invoice.model_validate(response.json())
+            if response.status_code == 422:
+                detail = ApiErrorModel.model_validate(response.json())
+                raise ApiError(response.status_code, response.text, detail, response)
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 
     async def get_invoice(
         self,
@@ -131,28 +174,47 @@ class InvoicesClient:
         *,
         timeout: float | None = None,
     ) -> Invoice:
-        path = "/invoices/{invoiceId}"
-        path = path.replace("{invoiceId}", serialize_path("invoiceId", invoice_id))
+        try:
+            path = "/invoices/{invoiceId}"
+            path = path.replace("{invoiceId}", serialize_path("invoiceId", invoice_id))
 
-        headers = dict(self._headers)
-        headers.setdefault("Accept", "application/json")
+            headers = dict(self._headers)
+            headers.setdefault("Accept", "application/json")
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        response = await self._client.request(
-            method=HttpMethods.GET,
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
 
-        if response.status_code == 200:
-            return Invoice.model_validate(response.json())
-        if response.status_code == 404:
-            parsed_body = ApiErrorModel.model_validate(response.json())
-            raise ApiError(response.status_code, response.text, parsed_body, response)
+        try:
+            response = await self._client.request(
+                method=HttpMethods.GET,
+                url=f"{self._base_url}{path}",
+                headers=headers,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 200:
+                return Invoice.model_validate(response.json())
+            if response.status_code == 404:
+                detail = ApiErrorModel.model_validate(response.json())
+                raise ApiError(response.status_code, response.text, detail, response)
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 
     async def send_invoice(
         self,
@@ -160,25 +222,44 @@ class InvoicesClient:
         *,
         timeout: float | None = None,
     ) -> Invoice:
-        path = "/invoices/{invoiceId}/send"
-        path = path.replace("{invoiceId}", serialize_path("invoiceId", invoice_id))
+        try:
+            path = "/invoices/{invoiceId}/send"
+            path = path.replace("{invoiceId}", serialize_path("invoiceId", invoice_id))
 
-        headers = dict(self._headers)
-        headers.setdefault("Accept", "application/json")
+            headers = dict(self._headers)
+            headers.setdefault("Accept", "application/json")
 
-        apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
+            apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-        response = await self._client.request(
-            method=HttpMethods.POST,
-            url=f"{self._base_url}{path}",
-            headers=headers,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
 
-        if response.status_code == 200:
-            return Invoice.model_validate(response.json())
-        if response.status_code == 409:
-            parsed_body = ApiErrorModel.model_validate(response.json())
-            raise ApiError(response.status_code, response.text, parsed_body, response)
+        try:
+            response = await self._client.request(
+                method=HttpMethods.POST,
+                url=f"{self._base_url}{path}",
+                headers=headers,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 200:
+                return Invoice.model_validate(response.json())
+            if response.status_code == 409:
+                detail = ApiErrorModel.model_validate(response.json())
+                raise ApiError(response.status_code, response.text, detail, response)
+
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error

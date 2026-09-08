@@ -9,9 +9,10 @@ openapi.json  ──▶  httpxgen  ──▶  payments/
                                     ├── __init__.py
                                     ├── client.py         # the public client class
                                     ├── models.py
-                                    ├── exceptions.py     # ApiError
+                                    ├── exceptions.py     # generated client errors
                                     ├── http_methods.py   # HttpMethods
                                     ├── serialization.py  # parameter and auth helpers
+                                    ├── transport.py      # structural protocols and file types
                                     └── py.typed
 ```
 
@@ -25,7 +26,8 @@ openapi.json  ──▶  httpxgen  ──▶  api/
                                     │     ├── exceptions.py
                                     │     ├── http_methods.py
                                     │     ├── models.py   # only models used by both tags
-                                    │     └── serialization.py
+                                    │     ├── serialization.py
+                                    │     └── transport.py
                                     ├── payments/
                                     │     ├── client.py
                                     │     └── models.py   # models only payments uses
@@ -56,7 +58,9 @@ Or run it without installing anything:
 uvx httpxgen openapi.json src/payments
 ```
 
-httpxgen is only needed at build time — the generated package depends on `httpx` and `pydantic` alone.
+httpxgen is only needed at build time. Generated clients use `pydantic` for
+models and accept any asynchronous HTTP client satisfying their structural
+transport protocol, including `httpx.AsyncClient` and API-compatible clients.
 
 ## Quick start
 
@@ -65,7 +69,7 @@ httpxgen openapi.yaml src/payments --package-name payments
 ```
 
 ```
-Generated 6 file(s) in package src/payments.
+Generated 8 file(s) in package src/payments.
 ```
 
 ```python
@@ -73,15 +77,22 @@ import asyncio
 
 import httpx
 
-from payments import ApiError, CardPaymentMethod, CreateChargeRequest, Money, PaymentsClient
+from payments import (
+    CardPaymentMethod,
+    ClientError,
+    CreateChargeRequest,
+    Money,
+    PaymentsClient,
+)
 
 
 async def main() -> None:
-    async with PaymentsClient(
-        httpx.AsyncClient(),
-        "https://payments.example.com/api",
-        credentials={"bearerAuth": "your-token"},
-    ) as client:
+    async with httpx.AsyncClient() as http_client:
+        client = PaymentsClient(
+            http_client,
+            "https://payments.example.com/api",
+            credentials={"bearerAuth": "your-token"},
+        )
         page = await client.list_charges(status="succeeded", page_size=50)
         for charge in page.items:
             print(charge.id, charge.amount.amount_cents, charge.status)
@@ -93,10 +104,8 @@ async def main() -> None:
                     payment_method=CardPaymentMethod(...),
                 )
             )
-        except ApiError as error:
-            print(error.status_code, error.body)
-            if error.parsed_body is not None:
-                print(error.parsed_body)
+        except ClientError as error:
+            print(f"payment request failed: {error}")
 
 
 asyncio.run(main())
@@ -169,18 +178,27 @@ class PaymentsClient:
 
         apply_security(self._credentials, [("bearerAuth",)], headers, query, {})
 
-        response = await self._client.request(
-            method=HttpMethods.GET,
-            url=f"{self._base_url}{path}",
-            params=query,
-            headers=headers,
-            timeout=self._timeout if timeout is None else timeout,
-        )
+        try:
+            response = await self._client.request(
+                method=HttpMethods.GET,
+                url=f"{self._base_url}{path}",
+                params=query,
+                headers=headers,
+                timeout=self._timeout if timeout is None else timeout,
+            )
+        except Exception as error:
+            raise TransportError(error) from error
 
-        if response.status_code == 200:
-            return ChargePage.model_validate(response.json())
-
-        raise ApiError(response.status_code, response.text, response=response)
+        try:
+            if response.status_code == 200:
+                return ChargePage.model_validate(response.json())
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            raise ResponseValidationError(
+                response.status_code, response, error
+            ) from error
 ```
 
 Path parameters carry their spec format — `format: uuid` becomes `UUID`, not `str`:
@@ -208,8 +226,8 @@ Path parameters carry their spec format — `format: uuid` becomes `UUID`, not `
         if response.status_code == 200:
             return Customer.model_validate(response.json())
         if response.status_code == 404:
-            parsed_body = ApiErrorModel.model_validate(response.json())
-            raise ApiError(response.status_code, response.text, parsed_body, response)
+            detail = ApiErrorModel.model_validate(response.json())
+            raise ApiError(response.status_code, response.text, detail, response)
 
         raise ApiError(response.status_code, response.text, response=response)
 ```
@@ -230,12 +248,44 @@ Request bodies are a single typed `body` argument, serialized by alias and witho
         ...
 ```
 
-The same direct shape is used for other ordinary body encodings:
-`application/x-www-form-urlencoded` is passed as `data=`, multipart object
-fields are separated into `data=` and `files=`, and binary payloads use
-`content=`. Multipart boundaries remain under `httpx`'s control.
+The same direct shape is used for JSON, form, text, and small binary bodies.
+An `application/octet-stream` body accepts `bytes`, `Iterable[bytes]`, or
+`AsyncIterable[bytes]` and is passed directly as `content=`.
 
-The client is an async context manager, so `httpx` connections are closed for you:
+Multipart fields are flattened into method arguments. Binary arrays become
+repeated parts with the same wire name, while `UploadFile` carries optional
+per-part metadata without reading an open file eagerly:
+
+```python
+await client.upload_documents(
+    documents=[
+        UploadFile(open("a.pdf", "rb"), filename="a.pdf"),
+        UploadFile(open("b.pdf", "rb"), filename="b.pdf"),
+    ],
+    category="contracts",
+)
+```
+
+Multipart boundaries remain under the HTTP transport's control. This replaces
+the old Pydantic multipart `body` argument; regenerate and update multipart
+call sites to pass fields directly.
+
+Successful binary responses also get a streaming context-manager variant. The
+buffered method remains available for small responses:
+
+```python
+content = await client.download_recording(recording_id)
+
+async with client.stream_download_recording(recording_id) as recording:
+    async for chunk in recording.iter_bytes(chunk_size=64 * 1024):
+        await destination.write(chunk)
+
+print(recording.media_type, recording.content_length, recording.filename)
+```
+
+The streaming context owns the individual response only. The generated wrapper
+treats its injected HTTP client as borrowed, so closing the wrapper does not
+close a shared application transport:
 
 ```python
 http_client = httpx.AsyncClient()
@@ -245,7 +295,15 @@ async with PaymentsClient(
     credentials={"bearerAuth": "your-token"},
 ) as client:
     ...
+
+await http_client.aclose()
 ```
+
+All operation failures derive from `ClientError`. `TransportError` retains its
+original `cause`, `ResponseValidationError` retains both the response and cause,
+and `ApiError` exposes a parsed `detail` plus convenient `code` and `message`
+properties. `body` and `parsed_body` remain compatibility aliases for
+`raw_body` and `detail`.
 
 ### And these models
 
@@ -299,14 +357,15 @@ from payments import ApiError, Charge, ChargeStatus, Money, PaymentsClient
 ## CLI
 
 ```
-httpxgen OPENAPI OUTPUT [--package-name NAME] [--tag TAG] [--schema-tag TAG] [--check]
+httpxgen OPENAPI OUTPUT [--package-name NAME] [--client-name NAME] [--tag TAG] [--schema-tag TAG] [--check]
 ```
 
 | Argument | Meaning |
 | --- | --- |
 | `OPENAPI` | OpenAPI JSON or YAML file |
 | `OUTPUT` | target package directory, or the root holding one package per tag when several `--tag` are given (created if missing) |
-| `--package-name` | import name and client class prefix; defaults to the output directory name |
+| `--package-name` | complete generated import package; defaults to the output directory name |
+| `--client-name` | exact single-client class name; not available for multi-tag workspaces |
 | `--tag TAG` | generate only operations carrying this tag; repeat it for one package per tag |
 | `--schema-tag TAG` | keep schemas referenced by this tag without generating its operations; repeatable |
 | `--check` | write nothing; exit non-zero when the checked-in output is stale |
@@ -320,8 +379,19 @@ httpxgen openapi.json src/billing \
   --schema-tag webhooks
 ```
 
-Repeat `--tag` and you get one client package per tag. `ApiError`, `HttpMethods`,
-and the serialization helpers are generated once in `shared/`, and every model lands in
+For a single client, the default class name comes from the final package
+segment: `generated.browser_worker` produces `BrowserWorkerClient`. Override it
+verbatim when the API needs a different public identity:
+
+```sh
+httpxgen openapi.json src/generated/browser_worker \
+  --package-name generated.browser_worker \
+  --client-name ProvisionerClient
+```
+
+Repeat `--tag` and you get one client package per tag. The exception hierarchy,
+transport types, `HttpMethods`, and serialization helpers are generated once in
+`shared/`, and every model lands in
 the package that uses it — `shared/models.py` holds only what more than one tag
 references. Generated modules import each other absolutely, so the output reads
 the same wherever you open it:
@@ -333,12 +403,12 @@ httpxgen specs/api.yml src/api --package-name api --tag payments --tag invoices
 ```python
 # src/api/invoices/client.py
 from api.invoices.models import CreateInvoiceRequest, Invoice, InvoicePage
-from api.shared import ApiError, HttpMethods, apply_security, serialize_path
+from api.shared import AsyncHttpClient, ClientError, HttpMethods, serialize_path
 from api.shared.models import ApiErrorModel
 ```
 
 ```python
-from api import ApiError, InvoicesClient, Money, PaymentsClient
+from api import ClientError, InvoicesClient, Money, PaymentsClient
 ```
 
 Every managed file starts with a `# Generated by httpxgen. DO NOT EDIT.` header. Files without it are never overwritten — httpxgen aborts instead.
@@ -405,11 +475,8 @@ Pydantic models, enums, nullable values, discriminated unions, and practical
 `allOf` inheritance.
 
 Unsupported constructs fail generation where possible. Important remaining
-limitations are external references, streaming, callbacks/webhooks, automatic
+limitations are external references, callbacks/webhooks, automatic
 pagination, and a synchronous client.
-
-See [`MISSING_IMPL.md`](MISSING_IMPL.md) for the prioritized checklist and the
-test requirements for each future step.
 
 ## Development
 

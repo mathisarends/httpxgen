@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any, NamedTuple
 from urllib.parse import quote
 
-Credential = str | tuple[str, str]
+type Credential = str | tuple[str, str]
 
 _RESERVED_CHARACTERS = ":/?#[]@!$&'()*+,;="
 

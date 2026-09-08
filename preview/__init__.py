@@ -39,16 +39,19 @@ from .payments.models import (
     PaymentMethodType,
     UploadCustomerAvatarBody,
 )
-from .shared import ApiError, HttpMethods
+from .shared import (ApiError, AsyncHttpClient, BinaryContent, BinaryStream, ClientError, HttpMethods, HttpResponse, RequestValidationError, ResponseValidationError, TransportError, UploadFile)
 from .shared.models import ApiErrorModel, BaseEntity, CustomerProfile, Money
 
 __all__ = [
     "Address",
     "ApiError",
     "ApiErrorModel",
+    "AsyncHttpClient",
     "AuditInfo",
     "BankTransferPaymentMethod",
     "BaseEntity",
+    "BinaryContent",
+    "BinaryStream",
     "CardPaymentMethod",
     "Charge",
     "ChargeCreatedEvent",
@@ -58,6 +61,7 @@ __all__ = [
     "ChargePage",
     "ChargeRefundedEvent",
     "ChargeStatus",
+    "ClientError",
     "CreateChargeRequest",
     "CreateChargeResult201",
     "CreateInvoiceRequest",
@@ -67,6 +71,7 @@ __all__ = [
     "CustomerProfileRequest",
     "CustomerProfileResponse",
     "HttpMethods",
+    "HttpResponse",
     "ImportCustomerProfileBody",
     "Invoice",
     "InvoiceLineItem",
@@ -80,5 +85,9 @@ __all__ = [
     "PaymentMethodReference",
     "PaymentMethodType",
     "PaymentsClient",
+    "RequestValidationError",
+    "ResponseValidationError",
+    "TransportError",
     "UploadCustomerAvatarBody",
+    "UploadFile",
 ]
