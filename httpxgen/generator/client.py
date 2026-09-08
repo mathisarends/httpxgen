@@ -155,7 +155,13 @@ def _render_client_imports(
     lines.append("")
     by_module: dict[str, list[str]] = {}
     by_module.setdefault(layout.exceptions, []).extend(
-        ["ApiError", "ClientError", "ResponseValidationError", "TransportError"]
+        [
+            "ApiError",
+            "ClientError",
+            "RequestValidationError",
+            "ResponseValidationError",
+            "TransportError",
+        ]
     )
     by_module.setdefault(layout.http_methods or layout.serialization, []).append(
         "HttpMethods"

@@ -3,7 +3,13 @@
 {{ signature }}        *,
 {{ content_type_argument }}        timeout: float | None = None,
     ) -> {{ return_annotation }}:
-{{ assignments }}
+        try:
+{{ assignments | indent(4, true) }}
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
+
         try:
             response = await self._client.request(
 {% for argument in request_arguments %}

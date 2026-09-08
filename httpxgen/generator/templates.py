@@ -54,6 +54,14 @@ class TransportError(ClientError):
         self.cause = cause
 
 
+class RequestValidationError(ClientError):
+    """Raised when request arguments cannot be serialized."""
+
+    def __init__(self, cause: Exception) -> None:
+        super().__init__(f"request validation failed: {cause}")
+        self.cause = cause
+
+
 class ResponseValidationError(ClientError):
     """Raised when an HTTP response does not match the OpenAPI contract."""
 
@@ -111,9 +119,9 @@ _TRANSPORT = '''\
 from collections.abc import AsyncIterable, AsyncIterator, Iterable, Mapping
 from dataclasses import dataclass
 from email.message import Message
-from typing import Any, BinaryIO, Protocol, TypeAlias
+from typing import Any, BinaryIO, Protocol, runtime_checkable
 
-BinaryContent: TypeAlias = bytes | Iterable[bytes] | AsyncIterable[bytes]
+type BinaryContent = bytes | Iterable[bytes] | AsyncIterable[bytes]
 
 
 class HttpResponse(Protocol):
@@ -139,6 +147,7 @@ class AsyncResponseContextManager(Protocol):
     async def __aexit__(self, *exc_info: object) -> object: ...
 
 
+@runtime_checkable
 class AsyncHttpClient(Protocol):
     async def request(self, method: str, url: str, **kwargs: Any) -> HttpResponse: ...
 
@@ -157,8 +166,8 @@ class UploadFile:
     headers: Mapping[str, str] | None = None
 
 
-UploadInput: TypeAlias = UploadFile | bytes | BinaryIO
-FilePart: TypeAlias = tuple[
+type UploadInput = UploadFile | bytes | BinaryIO
+type FilePart = tuple[
     str | None,
     bytes | str | BinaryIO,
     str | None,
@@ -457,7 +466,13 @@ _OPERATION = """\
 
 
 _SHARED_INIT = """\
-from .exceptions import ApiError, ClientError, ResponseValidationError, TransportError
+from .exceptions import (
+    ApiError,
+    ClientError,
+    RequestValidationError,
+    ResponseValidationError,
+    TransportError,
+)
 from .http_methods import HttpMethods
 from .serialization import (
     Credential,
@@ -489,6 +504,7 @@ __all__ = [
     "Credential",
     "HttpMethods",
     "HttpResponse",
+    "RequestValidationError",
     "ResponseValidationError",
     "SecurityScheme",
     "TransportError",

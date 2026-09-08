@@ -13,7 +13,13 @@
 {{ signature }}        *,
 {{ content_type_argument }}        timeout: float | None = None,
     ) -> AsyncIterator[BinaryStream]:
-{{ assignments }}
+        try:
+{{ assignments | indent(4, true) }}
+        except ClientError:
+            raise
+        except Exception as error:
+            raise RequestValidationError(error) from error
+
         response_stack = AsyncExitStack()
         try:
             response_context = self._client.stream(

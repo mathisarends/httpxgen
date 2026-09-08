@@ -31,6 +31,7 @@ _RESERVED_NAMES = {
     "BinaryStream",
     "ClientError",
     "ResponseValidationError",
+    "RequestValidationError",
     "TransportError",
     "UploadFile",
     "UUID",
@@ -137,7 +138,7 @@ def render_package_init(
     imports = [
         f"from .client import {client_name}",
         (
-            "from .exceptions import (ApiError, ClientError, "
+            "from .exceptions import (ApiError, ClientError, RequestValidationError, "
             "ResponseValidationError, TransportError)"
         ),
         "from .http_methods import HttpMethods",
@@ -158,6 +159,7 @@ def render_package_init(
             "HttpMethods",
             "HttpResponse",
             "ResponseValidationError",
+            "RequestValidationError",
             "TransportError",
             "UploadFile",
             client_name,
@@ -194,7 +196,8 @@ def render_workspace_init(
         (
             "from .shared import (ApiError, AsyncHttpClient, BinaryContent, "
             "BinaryStream, ClientError, HttpMethods, HttpResponse, "
-            "ResponseValidationError, TransportError, UploadFile)"
+            "RequestValidationError, ResponseValidationError, TransportError, "
+            "UploadFile)"
         ),
         *_model_import(".shared.models", shared_models),
     ]
@@ -207,6 +210,7 @@ def render_workspace_init(
         "HttpMethods",
         "HttpResponse",
         "ResponseValidationError",
+        "RequestValidationError",
         "TransportError",
         "UploadFile",
         *(name for _, name in clients),

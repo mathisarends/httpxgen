@@ -13,6 +13,14 @@ class TransportError(ClientError):
         self.cause = cause
 
 
+class RequestValidationError(ClientError):
+    """Raised when request arguments cannot be serialized."""
+
+    def __init__(self, cause: Exception) -> None:
+        super().__init__(f"request validation failed: {cause}")
+        self.cause = cause
+
+
 class ResponseValidationError(ClientError):
     """Raised when an HTTP response does not match the OpenAPI contract."""
 

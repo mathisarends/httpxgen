@@ -55,6 +55,13 @@ def test_operation_failures_share_one_exception_base(tmp_path):
             "/item": {
                 "get": {
                     "operationId": "getItem",
+                    "parameters": [
+                        {
+                            "name": "X-Broken",
+                            "in": "header",
+                            "schema": {"type": "string"},
+                        }
+                    ],
                     "responses": {
                         "200": {
                             "content": {
@@ -75,16 +82,25 @@ def test_operation_failures_share_one_exception_base(tmp_path):
     package = _load(tmp_path, "errors_api", spec)
     try:
         async def exercise():
+            class BadString:
+                def __str__(self):
+                    raise ValueError("cannot serialize")
+
             async with httpx.AsyncClient(
                 transport=httpx.MockTransport(
                     lambda request: httpx.Response(200, content=b"not-json")
                 )
             ) as http_client:
                 client = package.ErrorsApiClient(http_client, "https://example.test")
+                assert isinstance(http_client, package.AsyncHttpClient)
+                with pytest.raises(package.RequestValidationError):
+                    await client.get_item(x__broken=BadString())
                 with pytest.raises(package.ClientError) as caught:
                     await client.get_item()
                 assert isinstance(caught.value, package.ResponseValidationError)
                 assert caught.value.status_code == 200
+                await client.aclose()
+                assert not http_client.is_closed
 
             async def fail(request):
                 raise httpx.ConnectError("offline", request=request)
@@ -174,6 +190,39 @@ def test_binary_response_streams_and_buffered_method_uses_same_path(tmp_path):
                 assert responses[-1].is_closed
                 assert await client.download_recording() == b"abcdef"
 
+            async with httpx.AsyncClient(
+                transport=httpx.MockTransport(
+                    lambda request: httpx.Response(
+                        404,
+                        json={"code": "missing", "message": "not found"},
+                        headers={"Content-Type": "application/json"},
+                    )
+                )
+            ) as http_client:
+                client = package.StreamApiClient(http_client, "https://example.test")
+                with pytest.raises(package.ApiError) as caught:
+                    async with client.stream_download_recording():
+                        pass
+                assert caught.value.code == "missing"
+                assert caught.value.message == "not found"
+                assert caught.value.detail.code == "missing"
+                assert caught.value.raw_body
+                assert caught.value.parsed_body is caught.value.detail
+
+            async with httpx.AsyncClient(
+                transport=httpx.MockTransport(
+                    lambda request: httpx.Response(
+                        200,
+                        content=b"wrong",
+                        headers={"Content-Type": "text/plain"},
+                    )
+                )
+            ) as http_client:
+                client = package.StreamApiClient(http_client, "https://example.test")
+                with pytest.raises(package.ResponseValidationError):
+                    async with client.stream_download_recording():
+                        pass
+
         asyncio.run(exercise())
     finally:
         _unload(tmp_path, "stream_api")
@@ -220,41 +269,39 @@ def test_multipart_arrays_preserve_files_and_do_not_read_eagerly(tmp_path):
                 raise AssertionError("file was read eagerly")
             return super().read(size)
 
-    class MultipartTransport:
-        async def request(self, method, url, **kwargs):
-            assert kwargs.pop("timeout") == 30.0
-            assert "Content-Type" not in kwargs["headers"]
-            files = kwargs["files"]
-            assert [name for name, _ in files] == [
-                "documents",
-                "documents",
-                "category",
-            ]
-            assert files[0][1][0] == "a.pdf"
-            assert files[0][1][2:] == ("application/pdf", {})
-            assert files[1][1][0] is None
-            assert files[1][1][2:] == (None, {})
-            assert files[2] == ("category", (None, "contracts", None, {}))
-            assert files[0][1][1].tell() == 0
-            assert files[1][1][1].tell() == 0
-            return httpx.Response(204)
+    def handler(request):
+        body = request.content
+        assert request.headers["Content-Type"].startswith("multipart/form-data;")
+        assert body.count(b'name="documents"') == 2
+        assert b'filename="a.pdf"' in body
+        assert b"application/pdf" in body
+        assert b'name="category"' in body
+        assert b'name="note"' not in body
+        assert b"X-Part: first" in body
+        return httpx.Response(204)
 
     try:
         async def exercise():
             first = ChunkOnlyFile(b"first")
             second = ChunkOnlyFile(b"second")
-            client = package.UploadsApiClient(
-                MultipartTransport(), "https://example.test"
-            )
-            await client.upload_documents(
-                documents=[
-                    package.UploadFile(
-                        first, filename="a.pdf", content_type="application/pdf"
-                    ),
-                    second,
-                ],
-                category="contracts",
-            )
+            async with httpx.AsyncClient(
+                transport=httpx.MockTransport(handler)
+            ) as http_client:
+                client = package.UploadsApiClient(
+                    http_client, "https://example.test"
+                )
+                await client.upload_documents(
+                    documents=[
+                        package.UploadFile(
+                            first,
+                            filename="a.pdf",
+                            content_type="application/pdf",
+                            headers={"X-Part": "first"},
+                        ),
+                        second,
+                    ],
+                    category="contracts",
+                )
 
         asyncio.run(exercise())
     finally:

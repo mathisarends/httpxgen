@@ -1,9 +1,9 @@
 from collections.abc import AsyncIterable, AsyncIterator, Iterable, Mapping
 from dataclasses import dataclass
 from email.message import Message
-from typing import Any, BinaryIO, Protocol, TypeAlias
+from typing import Any, BinaryIO, Protocol, runtime_checkable
 
-BinaryContent: TypeAlias = bytes | Iterable[bytes] | AsyncIterable[bytes]
+type BinaryContent = bytes | Iterable[bytes] | AsyncIterable[bytes]
 
 
 class HttpResponse(Protocol):
@@ -29,6 +29,7 @@ class AsyncResponseContextManager(Protocol):
     async def __aexit__(self, *exc_info: object) -> object: ...
 
 
+@runtime_checkable
 class AsyncHttpClient(Protocol):
     async def request(self, method: str, url: str, **kwargs: Any) -> HttpResponse: ...
 
@@ -47,8 +48,8 @@ class UploadFile:
     headers: Mapping[str, str] | None = None
 
 
-UploadInput: TypeAlias = UploadFile | bytes | BinaryIO
-FilePart: TypeAlias = tuple[
+type UploadInput = UploadFile | bytes | BinaryIO
+type FilePart = tuple[
     str | None,
     bytes | str | BinaryIO,
     str | None,
