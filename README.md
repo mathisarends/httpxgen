@@ -1,8 +1,52 @@
 # httpxgen
 
-Generate a **typed async [httpx](https://www.python-httpx.org/) client** from an OpenAPI document — no runtime layer, no reflection, no magic.
+> **OpenAPI in. Typed async Python out.**
 
-httpxgen emits plain Python you could have written by hand: `async def` methods with real parameter names, [Pydantic](https://docs.pydantic.dev/) models for every schema, discriminated unions for `oneOf`, `StrEnum` for enums, and `UUID` / `datetime` where the spec says so. Check the output into your repo, read it, click through it in your editor.
+`httpxgen` turns an OpenAPI 3 document into a readable, fully typed async
+Python client built for [httpx](https://www.python-httpx.org/) and
+[Pydantic](https://docs.pydantic.dev/). The generated source looks like code
+you would write yourself: real method signatures, idiomatic names, explicit
+request handling, and models your editor understands.
+
+```sh
+httpxgen openapi.yaml src/payments --package-name payments
+```
+
+There is no runtime framework, reflection, or hidden request machinery. Generate
+the client, check it into your repository, review it, debug it, and ship it.
+
+## Contents
+
+- [Why httpxgen?](#why-httpxgen)
+- [Generated package](#generated-package)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [From OpenAPI to Python](#from-openapi-to-python)
+- [CLI reference](#cli-reference)
+- [Automation and CI](#automation-and-ci)
+- [Supported scope](#supported-scope)
+- [Development](#development)
+- [License](#license)
+
+## Why httpxgen?
+
+| You get | Why it matters |
+| --- | --- |
+| Plain, generated Python | Read, review, and debug every request without learning a runtime abstraction |
+| Precise async methods | `operationId` becomes an idiomatic method with real path, query, header, and body parameters |
+| Pydantic 2 models | Validation, aliases, constraints, recursive types, `allOf`, and discriminated unions stay useful in Python |
+| Native Python types | OpenAPI formats become types such as `UUID`, `datetime`, `StrEnum`, and `Literal` |
+| Explicit error handling | Transport failures, invalid responses, and API errors are separate typed exceptions |
+| Flexible transport | Use `httpx.AsyncClient` or any compatible async client through a structural protocol |
+| Deterministic output | Commit generated files and use `--check` to catch stale clients in CI |
+| Tag-based packages | Split a large API into focused clients while generating shared code only once |
+
+`httpxgen` is a build-time tool. Your generated package depends on Pydantic for
+its models, but it does **not** depend on `httpxgen` at runtime.
+
+## Generated package
+
+A regular specification becomes a self-contained Python package:
 
 ```
 openapi.json  ──▶  httpxgen  ──▶  payments/
@@ -16,8 +60,8 @@ openapi.json  ──▶  httpxgen  ──▶  payments/
                                     └── py.typed
 ```
 
-Split a large document along its tags and the support modules are generated once,
-beside the clients that share them:
+For larger specifications, repeat `--tag` to create focused subclients. Shared
+models and support modules are generated once beside them:
 
 ```
 openapi.json  ──▶  httpxgen  ──▶  api/
@@ -39,6 +83,8 @@ openapi.json  ──▶  httpxgen  ──▶  api/
 
 ## Install
 
+Requires Python 3.12 or newer.
+
 With [uv](https://docs.astral.sh/uv/):
 
 ```sh
@@ -58,11 +104,9 @@ Or run it without installing anything:
 uvx httpxgen openapi.json src/payments
 ```
 
-httpxgen is only needed at build time. Generated clients use `pydantic` for
-models and accept any asynchronous HTTP client satisfying their structural
-transport protocol, including `httpx.AsyncClient` and API-compatible clients.
-
 ## Quick start
+
+Generate a package from a local OpenAPI JSON or YAML document:
 
 ```sh
 httpxgen openapi.yaml src/payments --package-name payments
@@ -111,9 +155,12 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-## What the generated code looks like
+The package root re-exports the client, models, and exceptions, so application
+imports stay short and stable.
 
-### From this spec
+## From OpenAPI to Python
+
+### OpenAPI input
 
 ```yaml
 /charges:
@@ -136,7 +183,7 @@ asyncio.run(main())
             schema: { $ref: "#/components/schemas/ChargePage" }
 ```
 
-### You get this client
+### Generated client
 
 `operationId` becomes an idiomatic snake_case method, optional query parameters are only sent when set, and the response is validated into a model:
 
@@ -305,7 +352,7 @@ and `ApiError` exposes a parsed `detail` plus convenient `code` and `message`
 properties. `body` and `parsed_body` remain compatibility aliases for
 `raw_body` and `detail`.
 
-### And these models
+### Generated models
 
 `allOf` becomes inheritance, `oneOf` + `discriminator` becomes a Pydantic discriminated union, string enums become `StrEnum`, and `minimum` / `maxLength` survive as `Field(...)` constraints:
 
@@ -354,7 +401,7 @@ Everything is re-exported from the package root, so consumers import from one pl
 from payments import ApiError, Charge, ChargeStatus, Money, PaymentsClient
 ```
 
-## CLI
+## CLI reference
 
 ```
 httpxgen OPENAPI OUTPUT [--package-name NAME] [--client-name NAME] [--tag TAG] [--schema-tag TAG] [--check]
@@ -413,7 +460,7 @@ from api import ClientError, InvoicesClient, Money, PaymentsClient
 
 Every managed file starts with a `# Generated by httpxgen. DO NOT EDIT.` header. Files without it are never overwritten — httpxgen aborts instead.
 
-## Use it from a shell script
+## Automation and CI
 
 Generated code is checked in, so a tiny script is usually all the automation you need.
 
@@ -463,7 +510,7 @@ client-check:
 	uvx httpxgen openapi.json src/payments --package-name payments --check
 ```
 
-## Scope
+## Supported scope
 
 httpxgen targets ordinary OpenAPI 3.0 and 3.1 client specifications, not every
 JSON Schema feature. It supports JSON/YAML input, local component references,
