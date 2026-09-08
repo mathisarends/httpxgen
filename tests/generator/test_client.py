@@ -21,7 +21,7 @@ def test_render_client_handles_an_api_without_operations():
     source = render_client((), {}, "EmptyClient", _LAYOUT)
 
     assert "class EmptyClient:" in source
-    assert "client: httpx.AsyncClient" in source
+    assert "client: AsyncHttpClient" in source
     assert "self._client = client" in source
     assert "async def __aenter__(self) -> Self:" in source
     assert "def serialize_path" not in source
@@ -51,7 +51,9 @@ def test_render_client_imports_shared_support_from_the_workspace_package():
 
     source = render_client((operation,), {}, "ItemsClient", layout)
 
-    assert "from api.shared import ApiError, HttpMethods, serialize_path" in source
+    assert "from api.shared import (" in source
+    assert "    AsyncHttpClient," in source
+    assert "    serialize_path," in source
     assert "from payments." not in source
 
 

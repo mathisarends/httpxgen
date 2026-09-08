@@ -38,12 +38,23 @@ class Parameter:
 
 
 @dataclass(frozen=True)
+class MultipartField:
+    name: str
+    wire_name: str
+    annotation: str
+    required: bool
+    is_file: bool = False
+    is_array: bool = False
+
+
+@dataclass(frozen=True)
 class Body:
     annotation: str
     required: bool
     media_type: str = "application/json"
     kind: str = "json"
     binary_fields: tuple[str, ...] = ()
+    multipart_fields: tuple[MultipartField, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -110,11 +121,18 @@ def read_operations(spec: OpenAPISpec) -> tuple[Operation, ...]:
             if not operation.operation_id:
                 raise GenerationError(f"{method.upper()} {path} has no operationId")
             bodies = _read_bodies(operation.request_body, spec)
+            if len(bodies) > 1 and any(body.kind == "multipart" for body in bodies):
+                raise GenerationError(
+                    f"{method.upper()} {path} combines multipart/form-data with "
+                    "other request media types; split it into separate operations"
+                )
             body = bodies[0] if bodies else None
             parameters = _read_parameters(
                 [*path_item.parameters, *operation.parameters], spec
             )
             _validate_parameters(path, parameters, has_body=body is not None)
+            if body is not None and body.kind == "multipart":
+                _validate_multipart_fields(path, parameters, body.multipart_fields)
             security_source = (
                 spec.security if operation.security is None else operation.security
             )
@@ -135,11 +153,17 @@ def read_operations(spec: OpenAPISpec) -> tuple[Operation, ...]:
                     name=identifier(operation.operation_id),
                     parameters=parameters,
                     body_annotation=(
-                        " | ".join(dict.fromkeys(item.annotation for item in bodies))
+                        None
+                        if body is not None and body.kind == "multipart"
+                        else " | ".join(
+                            dict.fromkeys(item.annotation for item in bodies)
+                        )
                         if bodies
                         else None
                     ),
-                    body_required=body.required if body else False,
+                    body_required=(
+                        body.required if body and body.kind != "multipart" else False
+                    ),
                     responses=_read_responses(
                         operation.responses,
                         method,
@@ -271,6 +295,23 @@ def _validate_parameters(
             )
 
 
+def _validate_multipart_fields(
+    path: str,
+    parameters: Sequence[Parameter],
+    fields: Sequence[MultipartField],
+) -> None:
+    names = [field.name for field in fields]
+    duplicates = {name for name in names if names.count(name) > 1}
+    parameter_names = {parameter.name for parameter in parameters}
+    reserved = {"self", "timeout", "body", "content_type"}
+    conflicts = sorted(duplicates | (set(names) & (parameter_names | reserved)))
+    if conflicts:
+        raise GenerationError(
+            f"{path} has multipart field names that collide with client parameters: "
+            + ", ".join(conflicts)
+        )
+
+
 def _read_bodies(
     value: RequestBody | Reference | None, spec: OpenAPISpec
 ) -> tuple[Body, ...]:
@@ -288,18 +329,48 @@ def _read_bodies(
         "request body",
         kinds=("json", "form", "multipart", "text", "binary"),
     ):
-        annotation = "bytes" if kind == "binary" else schema_type(schema)
+        annotation = "BinaryContent" if kind == "binary" else schema_type(schema)
         shape = schema
         if "$ref" in schema:
             name = _reference_name(schema["$ref"], "schemas")
             shape = spec.components.schemas.get(name, schema)
         _, shape = split_all_of(shape)
+        required_fields = set(shape.get("required", ()))
+        multipart_fields: list[MultipartField] = []
+        for name, field in shape.get("properties", {}).items():
+            is_array = field.get("type") == "array"
+            item = field.get("items", {}) if is_array else field
+            is_file = item.get("format") == "binary"
+            field_annotation = (
+                "Sequence[UploadInput]"
+                if is_file and is_array
+                else "UploadInput"
+                if is_file
+                else schema_type(field)
+            )
+            multipart_fields.append(
+                MultipartField(
+                    name=identifier(name),
+                    wire_name=name,
+                    annotation=field_annotation,
+                    required=name in required_fields,
+                    is_file=is_file,
+                    is_array=is_array,
+                )
+            )
         binary_fields = tuple(
-            name
-            for name, field in shape.get("properties", {}).items()
-            if field.get("format") == "binary"
+            field.wire_name for field in multipart_fields if field.is_file
         )
-        result.append(Body(annotation, value.required, media_type, kind, binary_fields))
+        result.append(
+            Body(
+                annotation,
+                value.required,
+                media_type,
+                kind,
+                binary_fields,
+                tuple(multipart_fields),
+            )
+        )
     return tuple(result)
 
 

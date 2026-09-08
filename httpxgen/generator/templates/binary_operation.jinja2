@@ -1,0 +1,45 @@
+    async def {{ operation.name }}(
+        self,
+{{ signature }}        *,
+{{ content_type_argument }}        timeout: float | None = None,
+    ) -> bytes:
+        async with self.stream_{{ operation.name }}(
+{{ forwarded_arguments }}        ) as stream:
+            return b"".join([chunk async for chunk in stream.iter_bytes()])
+
+    @asynccontextmanager
+    async def stream_{{ operation.name }}(
+        self,
+{{ signature }}        *,
+{{ content_type_argument }}        timeout: float | None = None,
+    ) -> AsyncIterator[BinaryStream]:
+{{ assignments }}
+        response_stack = AsyncExitStack()
+        try:
+            response_context = self._client.stream(
+{% for argument in request_arguments %}
+                {{ argument }},
+{% endfor %}
+            )
+            response = await response_stack.enter_async_context(response_context)
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
+
+        try:
+{{ response_handling }}
+        except ClientError:
+            await response_stack.aclose()
+            raise
+        except Exception as error:
+            await response_stack.aclose()
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
+
+        try:
+            yield binary_stream
+        finally:
+            await response_stack.aclose()

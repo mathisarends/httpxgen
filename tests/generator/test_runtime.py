@@ -286,9 +286,7 @@ def test_generated_client_sends_form_multipart_and_binary_bodies(tmp_path):
 
         async def exercise():
             await client.update_profile(package.UpdateProfileBody(name="Ada Lovelace"))
-            await client.upload_avatar(
-                package.UploadAvatarBody(file=b"portrait", description="avatar")
-            )
+            await client.upload_avatar(file=b"portrait", description="avatar")
             await client.replace_archive(b"archive")
             await client.aclose()
 

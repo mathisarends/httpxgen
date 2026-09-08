@@ -16,6 +16,7 @@ def test_generate_client_produces_a_complete_package(generatable_spec):
         "models.py",
         "exceptions.py",
         "http_methods.py",
+        "transport.py",
         "__init__.py",
         "py.typed",
     }
@@ -245,6 +246,7 @@ def test_generate_workspace_shares_support_modules_between_tag_packages(
         "shared/__init__.py",
         "shared/exceptions.py",
         "shared/http_methods.py",
+        "shared/transport.py",
         "shared/serialization.py",
         "shared/models.py",
         "payments/__init__.py",
@@ -254,7 +256,7 @@ def test_generate_workspace_shares_support_modules_between_tag_packages(
         "invoices/client.py",
         "invoices/models.py",
     }
-    assert "class ApiError(Exception):" in files["shared/exceptions.py"]
+    assert "class ApiError(ClientError):" in files["shared/exceptions.py"]
     assert "class HttpMethods(StrEnum):" in files["shared/http_methods.py"]
     assert 'POST = "POST"' in files["shared/http_methods.py"]
     assert "def apply_security(" in files["shared/serialization.py"]
@@ -273,7 +275,7 @@ def test_generate_workspace_shares_support_modules_between_tag_packages(
         assert "def apply_security(" not in client
     assert "from .invoices import InvoicesClient" in files["__init__.py"]
     assert "from .payments import PaymentsClient" in files["__init__.py"]
-    assert "from .shared import ApiError" in files["__init__.py"]
+    assert "from .shared import (ApiError, AsyncHttpClient" in files["__init__.py"]
 
 
 def _two_tag_spec(first_operation_id: str, second_operation_id: str) -> OpenAPISpec:

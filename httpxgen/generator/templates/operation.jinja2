@@ -1,0 +1,27 @@
+    async def {{ operation.name }}(
+        self,
+{{ signature }}        *,
+{{ content_type_argument }}        timeout: float | None = None,
+    ) -> {{ return_annotation }}:
+{{ assignments }}
+        try:
+            response = await self._client.request(
+{% for argument in request_arguments %}
+                {{ argument }},
+{% endfor %}
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
+
+        try:
+{{ response_handling | indent(4, true) }}
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error

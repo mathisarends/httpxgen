@@ -25,6 +25,10 @@ def main() -> int:
         help="generated import package name; defaults to the output directory name",
     )
     parser.add_argument(
+        "--client-name",
+        help="exact class name for a single generated client",
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="do not write; fail when generated output is stale",
@@ -50,6 +54,10 @@ def main() -> int:
 
     try:
         spec = load_openapi(args.openapi)
+        if args.client_name and len(args.tags) > 1:
+            raise GenerationError(
+                "--client-name cannot be used with multi-tag generation"
+            )
         if len(args.tags) <= 1:
             spec = filter_operations_by_tags(
                 spec,
@@ -60,6 +68,7 @@ def main() -> int:
             spec=spec,
             package_dir=args.output,
             package_name=args.package_name,
+            client_name=args.client_name,
             tags=args.tags,
             schema_tags=args.schema_tags,
             check=args.check,

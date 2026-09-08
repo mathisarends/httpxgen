@@ -19,6 +19,7 @@ def test_write_client_creates_an_importable_package(tmp_path, generatable_spec):
         "client.py",
         "exceptions.py",
         "http_methods.py",
+        "transport.py",
         "models.py",
         "py.typed",
     }

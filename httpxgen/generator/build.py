@@ -28,25 +28,31 @@ from httpxgen.selection import filter_operations_by_tags
 _SHARED = "shared"
 
 
-def generate_client(spec: OpenAPISpec, package_name: str) -> dict[str, str]:
+def generate_client(
+    spec: OpenAPISpec, package_name: str, *, client_name: str | None = None
+) -> dict[str, str]:
     """Render a single client package as {relative path: file content}."""
     spec = normalize_inline_schemas(spec)
     schemas = spec.components.schemas
     operations = read_operations(spec)
-    client_name = f"{class_name(package_name)}Client"
+    client_name = client_name or f"{class_name(package_name.rsplit('.', 1)[-1])}Client"
     validate_package_names(schemas, operations, client_name)
     layout = Layout(
         exceptions=f"{package_name}.exceptions",
         serialization=f"{package_name}.serialization",
         models=f"{package_name}.models",
         http_methods=f"{package_name}.http_methods",
+        transport=f"{package_name}.transport",
     )
     return _finish(
         {
             "client.py": render_client(operations, schemas, client_name, layout),
             "models.py": render_models(schemas, operations),
-            "exceptions.py": render_template(TemplateName.EXCEPTIONS),
+            "exceptions.py": render_template(
+                TemplateName.EXCEPTIONS, transport_module=layout.transport
+            ),
             "http_methods.py": render_template(TemplateName.HTTP_METHODS),
+            "transport.py": render_template(TemplateName.TRANSPORT),
             "serialization.py": render_serialization(read_security_schemes(spec)),
             "__init__.py": render_package_init(schemas, client_name, operations),
         }
@@ -82,8 +88,11 @@ def generate_workspace(
     shared_module = f"{package_name}.{_SHARED}"
 
     files = {
-        f"{_SHARED}/exceptions.py": render_template(TemplateName.EXCEPTIONS),
+        f"{_SHARED}/exceptions.py": render_template(
+            TemplateName.EXCEPTIONS, transport_module=f"{shared_module}.transport"
+        ),
         f"{_SHARED}/http_methods.py": render_template(TemplateName.HTTP_METHODS),
+        f"{_SHARED}/transport.py": render_template(TemplateName.TRANSPORT),
         f"{_SHARED}/serialization.py": render_serialization(
             read_security_schemes(spec)
         ),
@@ -103,6 +112,7 @@ def generate_workspace(
             serialization=shared_module,
             models=f"{package_name}.{module}.models",
             http_methods=shared_module,
+            transport=shared_module,
             shared_models=f"{shared_module}.models",
             shared_names=shared_names,
         )

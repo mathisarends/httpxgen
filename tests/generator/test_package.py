@@ -12,7 +12,7 @@ def test_render_package_init_exports_the_client_error_and_models():
     source = render_package_init({"Charge": {"type": "object"}}, "PaymentsClient")
 
     assert "from .client import PaymentsClient" in source
-    assert "from .exceptions import ApiError" in source
+    assert "from .exceptions import (ApiError, ClientError" in source
     assert "from .http_methods import HttpMethods" in source
     assert "from .models import Charge" in source
     assert '    "PaymentsClient",' in source
@@ -55,7 +55,7 @@ def test_render_workspace_init_reexports_every_client_and_shared_model():
     assert "from .invoices.models import Invoice" in source
     assert "from .payments import PaymentsClient" in source
     assert "from .payments.models import Charge" in source
-    assert "from .shared import ApiError, HttpMethods" in source
+    assert "from .shared import (ApiError, AsyncHttpClient" in source
     assert "from .shared.models import Money" in source
     assert '    "InvoicesClient",' in source
     assert '    "PaymentsClient",' in source

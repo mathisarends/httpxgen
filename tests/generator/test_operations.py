@@ -250,7 +250,7 @@ def test_request_body_and_response_component_references_are_resolved():
             "application/octet-stream",
             {"type": "string", "format": "binary"},
             "binary",
-            "bytes",
+            "BinaryContent",
             (),
         ),
     ],

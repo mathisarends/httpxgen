@@ -30,6 +30,7 @@ class Layout:
     serialization: str
     models: str
     http_methods: str = ""
+    transport: str = ""
     shared_models: str = ""
     shared_names: frozenset[str] = frozenset()
 
@@ -44,6 +45,12 @@ def render_client(
     annotations = " ".join(
         [
             *(item.annotation for op in operations for item in op.parameters),
+            *(
+                field.annotation
+                for op in operations
+                for body in _operation_bodies(op)
+                for field in body.multipart_fields
+            ),
             *(op.body_annotation or "" for op in operations),
             *(item.annotation for op in operations for item in op.responses),
             *(
@@ -128,24 +135,51 @@ def _render_client_imports(
     ):
         typing_names.insert(0, "Any")
     typing_names.append("Self")
-    lines = ["from collections.abc import Mapping"]
+    collection_names = ["Mapping"]
+    if "Sequence[" in annotations:
+        collection_names.append("Sequence")
+    if any(_has_binary_success(operation) for operation in operations):
+        collection_names.append("AsyncIterator")
+    lines = [f"from collections.abc import {', '.join(sorted(collection_names))}"]
+    if any(_has_binary_success(operation) for operation in operations):
+        lines.append("from contextlib import AsyncExitStack, asynccontextmanager")
     datetime_names = used_names(annotations, ("date", "datetime"))
     if datetime_names:
         lines.append(f"from datetime import {', '.join(datetime_names)}")
     lines.append(f"from typing import {', '.join(dict.fromkeys(typing_names))}")
     if "UUID" in annotations:
         lines.append("from uuid import UUID")
-    lines.extend(["", "import httpx"])
+    lines.append("")
     if _needs_type_adapter(operations):
         lines.append("from pydantic import TypeAdapter")
     lines.append("")
     by_module: dict[str, list[str]] = {}
-    by_module.setdefault(layout.exceptions, []).append("ApiError")
+    by_module.setdefault(layout.exceptions, []).extend(
+        ["ApiError", "ClientError", "ResponseValidationError", "TransportError"]
+    )
     by_module.setdefault(layout.http_methods or layout.serialization, []).append(
         "HttpMethods"
     )
     by_module.setdefault(layout.serialization, []).extend(
         _serialization_helpers(operations)
+    )
+    transport_names = ["AsyncHttpClient"]
+    if any(_has_binary_success(operation) for operation in operations):
+        transport_names.append("BinaryStream")
+    if any(
+        body.kind == "binary"
+        for operation in operations
+        for body in _operation_bodies(operation)
+    ):
+        transport_names.append("BinaryContent")
+    if any(
+        body.kind == "multipart"
+        for operation in operations
+        for body in _operation_bodies(operation)
+    ):
+        transport_names.extend(["FilePart", "UploadInput", "upload_file_part"])
+    by_module.setdefault(layout.transport or layout.serialization, []).extend(
+        transport_names
     )
     for name in model_names:
         module = layout.shared_models if name in layout.shared_names else layout.models
@@ -172,6 +206,8 @@ def _serialization_helpers(operations: Sequence[Operation]) -> list[str]:
             helpers.add("apply_security")
         for parameter in operation.parameters:
             helpers.add(_SERIALIZERS[parameter.location])
+        if any(body.kind == "multipart" for body in _operation_bodies(operation)):
+            helpers.add("scalar")
     return sorted(helpers)
 
 
@@ -200,6 +236,16 @@ def _render_operation(operation: Operation) -> str:
         arguments.append(
             (f"{parameter.name}: {parameter.annotation}{default}", parameter.required)
         )
+    multipart_body = next(
+        (body for body in _operation_bodies(operation) if body.kind == "multipart"),
+        None,
+    )
+    if multipart_body is not None:
+        for field in multipart_body.multipart_fields:
+            required = multipart_body.required and field.required
+            annotation = field.annotation if required else f"{field.annotation} | None"
+            default = "" if required else " = None"
+            arguments.append((f"{field.name}: {annotation}{default}", required))
     if operation.body_annotation:
         annotation = operation.body_annotation
         default = ""
@@ -229,16 +275,103 @@ def _render_operation(operation: Operation) -> str:
         _render_security(operation),
         _render_body(operation),
     ]
-    return render_template(
-        TemplateName.OPERATION,
-        operation=operation,
-        signature=signature,
-        content_type_argument=content_type_argument,
-        return_annotation=" | ".join(dict.fromkeys(successes)),
-        assignments="\n".join(block for block in blocks if block),
-        request_arguments=_render_request_arguments(operation),
-        response_handling=_render_response_handling(operation.responses),
-    ).rstrip("\n")
+    template = (
+        TemplateName.BINARY_OPERATION
+        if _has_binary_success(operation)
+        else TemplateName.OPERATION
+    )
+    context: dict[str, object] = {
+        "operation": operation,
+        "signature": signature,
+        "content_type_argument": content_type_argument,
+        "return_annotation": " | ".join(dict.fromkeys(successes)),
+        "assignments": "\n".join(block for block in blocks if block),
+        "request_arguments": _render_request_arguments(operation),
+        "response_handling": _render_response_handling(operation.responses),
+    }
+    if template == TemplateName.BINARY_OPERATION:
+        forwarded = [parameter.name for parameter in operation.parameters]
+        if multipart_body is not None:
+            forwarded.extend(field.name for field in multipart_body.multipart_fields)
+        if operation.body_annotation:
+            forwarded.append("body")
+        if len(bodies) > 1:
+            forwarded.append("content_type")
+        forwarded.append("timeout")
+        context["forwarded_arguments"] = "".join(
+            f"            {name}={name},\n" for name in forwarded
+        )
+        stream_handling = _render_stream_response_handling(operation.responses)
+        context["response_handling"] = "".join(
+            f"    {line}" if line.strip() else line
+            for line in stream_handling.splitlines(keepends=True)
+        )
+    return render_template(template, **context).rstrip("\n")
+
+
+def _has_binary_success(operation: Operation) -> bool:
+    return any(
+        response.success
+        and any(content.kind == "binary" for content in _response_contents(response))
+        for response in operation.responses
+    )
+
+
+def _render_stream_response_handling(responses: Sequence[Response]) -> str:
+    lines = ["        binary_stream: BinaryStream | None = None\n"]
+    for response in responses:
+        if not response.success:
+            continue
+        binary_contents = tuple(
+            content
+            for content in _response_contents(response)
+            if content.kind == "binary"
+        )
+        if not binary_contents:
+            continue
+        allowed = tuple(
+            dict.fromkeys(
+                _normalized_media_type(content.media_type)
+                for content in binary_contents
+            )
+        )
+        lines.extend(
+            [
+                f"        {_response_condition(response.status)}:\n",
+                "            response_content_type = ",
+                'response.headers.get("Content-Type", "")\n',
+                "            response_content_type = ",
+                'response_content_type.split(";", 1)[0].strip().lower()\n',
+                f"            if response_content_type not in {allowed!r}:\n",
+                "                raise ValueError(\n",
+                "                    f\"unsupported response Content-Type: ",
+                "{response_content_type}\"\n",
+                "                )\n",
+                "            binary_stream = BinaryStream(\n",
+                "                response, response_content_type\n",
+                "            )\n",
+            ]
+        )
+    lines.append("        if binary_stream is None:\n")
+    lines.append("            await response.aread()\n")
+    errors = _render_response_handling(
+        tuple(response for response in responses if not response.success)
+    )
+    lines.extend(
+        f"    {line}" if line.strip() else line
+        for line in errors.splitlines(keepends=True)
+    )
+    lines.append(
+        "            raise ApiError(\n"
+        "                response.status_code, response.text, response=response\n"
+        "            )\n"
+    )
+    lines.append("        assert binary_stream is not None\n")
+    return "".join(lines)
+
+
+def _normalized_media_type(media_type: str) -> str:
+    return media_type.split(";", 1)[0].strip().lower()
 
 
 def _parameter_default(parameter: Parameter) -> str:
@@ -348,6 +481,8 @@ def _render_body(operation: Operation) -> str:
     if not bodies:
         return ""
     body = bodies[0]
+    if body.kind == "multipart":
+        return "".join(_render_multipart_body(body, _INDENT))
     if len(bodies) > 1:
         lines = [f"{_INDENT}body_arguments: dict[str, Any] = {{}}\n"]
         indent = _INDENT
@@ -432,26 +567,51 @@ def _render_required_body(body: Body) -> list[str]:
             f"{_INDENT})\n",
         ]
     if body.kind == "multipart":
-        lines = [
-            f"{_INDENT}body_data = TypeAdapter({body.annotation}).dump_python(\n",
-            f'{_INDENT}    body, mode="python", by_alias=True, exclude_none=True\n',
-            f"{_INDENT})\n",
-            f"{_INDENT}form_data = dict(body_data)\n",
-            f"{_INDENT}files: dict[str, bytes] = {{}}\n",
-        ]
-        for name in body.binary_fields:
-            literal = string_literal(name)
-            lines.extend(
-                [
-                    f"{_INDENT}if {literal} in form_data:\n",
-                    f"{_INDENT}    files[{literal}] = form_data.pop({literal})\n",
-                ]
-            )
-        return lines
+        return _render_multipart_body(body, _INDENT)
     return []
 
 
-def _render_request_arguments(operation: Operation) -> str:
+def _render_multipart_body(body: Body, indent: str) -> list[str]:
+    lines = [
+        f"{indent}files: list[tuple[str, FilePart]] = []\n",
+    ]
+    for field in body.multipart_fields:
+        field_indent = indent
+        if not (body.required and field.required):
+            lines.append(f"{indent}if {field.name} is not None:\n")
+            field_indent += "    "
+        wire_name = string_literal(field.wire_name)
+        if field.is_file and field.is_array:
+            lines.append(
+                f"{field_indent}files.extend(\n"
+                f"{field_indent}    ({wire_name}, upload_file_part(item))\n"
+                f"{field_indent}    for item in {field.name}\n"
+                f"{field_indent})\n"
+            )
+        elif field.is_file:
+            lines.append(
+                f"{field_indent}files.append("
+                f"({wire_name}, upload_file_part({field.name})))\n"
+            )
+        elif field.is_array:
+            lines.append(
+                f"{field_indent}files.extend(\n"
+                f"{field_indent}    ("
+                f"{wire_name}, (None, scalar(item), None, {{}}))\n"
+                f"{field_indent}    for item in {field.name}\n"
+                f"{field_indent})\n"
+            )
+        else:
+            lines.append(
+                f"{field_indent}files.append((\n"
+                f"{field_indent}    {wire_name},\n"
+                f"{field_indent}    (None, scalar({field.name}), None, {{}}),\n"
+                f"{field_indent}))\n"
+            )
+    return lines
+
+
+def _render_request_arguments(operation: Operation) -> list[str]:
     arguments = [
         f"method=HttpMethods.{operation.method.name}",
         'url=f"{self._base_url}{path}"',
@@ -473,11 +633,11 @@ def _render_request_arguments(operation: Operation) -> str:
         elif body.kind == "form":
             arguments.append("data=form_data")
         elif body.kind == "multipart":
-            arguments.extend(("data=form_data", "files=files"))
+            arguments.append("files=files")
         else:
             arguments.append("content=body")
     arguments.append("timeout=self._timeout if timeout is None else timeout")
-    return ",\n            ".join(arguments)
+    return arguments
 
 
 def _render_response_handling(responses: Sequence[Response]) -> str:
@@ -550,7 +710,7 @@ def _render_content_response(contents: Sequence[ResponseContent]) -> list[str]:
     ]
     for index, content in enumerate(contents):
         keyword = "if" if index == 0 else "elif"
-        normalized = content.media_type.split(";", 1)[0].strip().lower()
+        normalized = _normalized_media_type(content.media_type)
         lines.extend(
             [
                 (
@@ -563,13 +723,11 @@ def _render_content_response(contents: Sequence[ResponseContent]) -> list[str]:
     lines.extend(
         [
             "            else:\n",
-            "                raise ApiError(\n",
-            "                    response.status_code,\n",
+            "                raise ValueError(\n",
             (
                 '                    f"unsupported response Content-Type: '
-                '{response_content_type}",\n'
+                '{response_content_type}"\n'
             ),
-            "                    response=response,\n",
             "                )\n",
         ]
     )

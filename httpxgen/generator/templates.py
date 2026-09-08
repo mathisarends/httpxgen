@@ -1,7 +1,14 @@
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 
-from jinja2 import DictLoader, Environment, StrictUndefined
+from jinja2 import (
+    ChoiceLoader,
+    DictLoader,
+    Environment,
+    FileSystemLoader,
+    StrictUndefined,
+)
 
 
 class TemplateName(StrEnum):
@@ -13,13 +20,16 @@ class TemplateName(StrEnum):
     MODEL = "model"
     MODELS = "models"
     OPERATION = "operation"
+    BINARY_OPERATION = "binary_operation"
     PACKAGE_INIT = "package_init"
     SERIALIZATION = "serialization"
     SHARED_INIT = "shared_init"
+    TRANSPORT = "transport"
 
 
 def render_template(template_name: TemplateName, **context: object) -> str:
-    return _environment().get_template(template_name.value).render(**context)
+    filename = f"{template_name.value}.jinja2"
+    return _environment().get_template(filename).render(**context)
 
 
 _GENERATED_HEADER_TEMPLATE = """\
@@ -29,21 +39,178 @@ _GENERATED_HEADER_TEMPLATE = """\
 """
 
 _EXCEPTIONS = '''\
-class ApiError(Exception):
+from {{ transport_module }} import HttpResponse
+
+
+class ClientError(Exception):
+    """Base class for failures produced by a generated client operation."""
+
+
+class TransportError(ClientError):
+    """Raised when the HTTP transport cannot complete a request."""
+
+    def __init__(self, cause: Exception) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+
+
+class ResponseValidationError(ClientError):
+    """Raised when an HTTP response does not match the OpenAPI contract."""
+
+    def __init__(
+        self, status_code: int, response: HttpResponse, cause: Exception
+    ) -> None:
+        super().__init__(f"HTTP {status_code} response validation failed: {cause}")
+        self.status_code = status_code
+        self.response = response
+        self.cause = cause
+
+
+class ApiError(ClientError):
     """Raised for a documented error response or an unexpected status code."""
 
     def __init__(
         self,
         status_code: int,
-        body: str,
-        parsed_body: object | None = None,
-        response: object | None = None,
+        raw_body: str,
+        detail: object | None = None,
+        response: HttpResponse | None = None,
     ) -> None:
-        super().__init__(f"HTTP {status_code}: {body}")
+        super().__init__(f"HTTP {status_code}: {raw_body}")
         self.status_code = status_code
-        self.body = body
-        self.parsed_body = parsed_body
+        self.raw_body = raw_body
+        self.detail = detail
         self.response = response
+
+    @property
+    def code(self) -> object | None:
+        return _detail_value(self.detail, "code")
+
+    @property
+    def message(self) -> object | None:
+        return _detail_value(self.detail, "message")
+
+    @property
+    def body(self) -> str:
+        """Deprecated alias for raw_body."""
+        return self.raw_body
+
+    @property
+    def parsed_body(self) -> object | None:
+        """Deprecated alias for detail."""
+        return self.detail
+
+
+def _detail_value(detail: object | None, name: str) -> object | None:
+    if isinstance(detail, dict):
+        return detail.get(name)
+    return getattr(detail, name, None)
+'''
+
+_TRANSPORT = '''\
+from collections.abc import AsyncIterable, AsyncIterator, Iterable, Mapping
+from dataclasses import dataclass
+from email.message import Message
+from typing import Any, BinaryIO, Protocol, TypeAlias
+
+BinaryContent: TypeAlias = bytes | Iterable[bytes] | AsyncIterable[bytes]
+
+
+class HttpResponse(Protocol):
+    status_code: int
+    headers: Mapping[str, str]
+
+    @property
+    def text(self) -> str: ...
+
+    @property
+    def content(self) -> bytes: ...
+
+    def json(self) -> Any: ...
+
+    def aiter_bytes(self, chunk_size: int | None = None) -> AsyncIterator[bytes]: ...
+
+    async def aread(self) -> bytes: ...
+
+
+class AsyncResponseContextManager(Protocol):
+    async def __aenter__(self) -> HttpResponse: ...
+
+    async def __aexit__(self, *exc_info: object) -> object: ...
+
+
+class AsyncHttpClient(Protocol):
+    async def request(self, method: str, url: str, **kwargs: Any) -> HttpResponse: ...
+
+    def stream(
+        self, method: str, url: str, **kwargs: Any
+    ) -> AsyncResponseContextManager: ...
+
+    async def aclose(self) -> None: ...
+
+
+@dataclass(frozen=True)
+class UploadFile:
+    content: bytes | BinaryIO
+    filename: str | None = None
+    content_type: str | None = None
+    headers: Mapping[str, str] | None = None
+
+
+UploadInput: TypeAlias = UploadFile | bytes | BinaryIO
+FilePart: TypeAlias = tuple[
+    str | None,
+    bytes | str | BinaryIO,
+    str | None,
+    Mapping[str, str],
+]
+
+
+def upload_file_part(value: UploadInput) -> FilePart:
+    if isinstance(value, UploadFile):
+        return value.filename, value.content, value.content_type, value.headers or {}
+    return None, value, None, {}
+
+
+class BinaryStream:
+    def __init__(self, response: HttpResponse, media_type: str | None) -> None:
+        self._response = response
+        self.media_type = media_type
+        self.headers = response.headers
+        self.content_length = _content_length(response.headers)
+        self.filename = _filename(response.headers)
+
+    def iter_bytes(self, chunk_size: int | None = None) -> AsyncIterator[bytes]:
+        return self._response.aiter_bytes(chunk_size=chunk_size)
+
+
+def _header(headers: Mapping[str, str], name: str) -> str | None:
+    value = headers.get(name)
+    if value is not None:
+        return value
+    lower_name = name.lower()
+    return next(
+        (value for key, value in headers.items() if key.lower() == lower_name), None
+    )
+
+
+def _content_length(headers: Mapping[str, str]) -> int | None:
+    value = _header(headers, "Content-Length")
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _filename(headers: Mapping[str, str]) -> str | None:
+    value = _header(headers, "Content-Disposition")
+    if value is None:
+        return None
+    message = Message()
+    message["Content-Disposition"] = value
+    return message.get_filename()
 '''
 
 _HTTP_METHODS = """\
@@ -235,7 +402,7 @@ _CLIENT = """\
 class {{ client_name }}:
     def __init__(
         self,
-        client: httpx.AsyncClient,
+        client: AsyncHttpClient,
         base_url: str,
         *,
         headers: Mapping[str, str] | None = None,
@@ -249,7 +416,7 @@ class {{ client_name }}:
         self._timeout = timeout
 
     async def aclose(self) -> None:
-        await self._client.aclose()
+        # The injected HTTP client is borrowed and remains open.
 
     async def __aenter__(self) -> Self:
         return self
@@ -267,17 +434,30 @@ _OPERATION = """\
 {{ content_type_argument }}        timeout: float | None = None,
     ) -> {{ return_annotation }}:
 {{ assignments }}
-        response = await self._client.request(
-            {{ request_arguments }},
-        )
+        try:
+            response = await self._client.request(
+                {{ request_arguments }},
+            )
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
+        try:
 {{ response_handling }}
-        raise ApiError(response.status_code, response.text, response=response)
+            raise ApiError(response.status_code, response.text, response=response)
+        except ClientError:
+            raise
+        except Exception as error:
+            validation_error = ResponseValidationError(
+                response.status_code, response, error
+            )
+            raise validation_error from error
 """
 
 
 _SHARED_INIT = """\
-from .exceptions import ApiError
+from .exceptions import ApiError, ClientError, ResponseValidationError, TransportError
 from .http_methods import HttpMethods
 from .serialization import (
     Credential,
@@ -288,17 +468,38 @@ from .serialization import (
     serialize_query,
     serialize_simple,
 )
+from .transport import (
+    AsyncHttpClient,
+    BinaryContent,
+    BinaryStream,
+    FilePart,
+    HttpResponse,
+    UploadFile,
+    UploadInput,
+    upload_file_part,
+)
 
 __all__ = [
     "ApiError",
+    "AsyncHttpClient",
+    "BinaryContent",
+    "BinaryStream",
+    "ClientError",
+    "FilePart",
     "Credential",
     "HttpMethods",
+    "HttpResponse",
+    "ResponseValidationError",
     "SecurityScheme",
+    "TransportError",
+    "UploadFile",
+    "UploadInput",
     "apply_security",
     "scalar",
     "serialize_path",
     "serialize_query",
     "serialize_simple",
+    "upload_file_part",
 ]
 """
 
@@ -314,13 +515,22 @@ _TEMPLATES: dict[TemplateName, str] = {
     TemplateName.PACKAGE_INIT: _PACKAGE_INIT,
     TemplateName.SERIALIZATION: _SERIALIZATION,
     TemplateName.SHARED_INIT: _SHARED_INIT,
+    TemplateName.TRANSPORT: _TRANSPORT,
 }
 
 
 @lru_cache(maxsize=1)
 def _environment() -> Environment:
+    embedded = {
+        f"{name.value}.jinja2": source for name, source in _TEMPLATES.items()
+    }
     return Environment(
-        loader=DictLoader({name.value: source for name, source in _TEMPLATES.items()}),
+        loader=ChoiceLoader(
+            [
+                FileSystemLoader(Path(__file__).with_name("templates")),
+                DictLoader(embedded),
+            ]
+        ),
         autoescape=False,
         trim_blocks=True,
         lstrip_blocks=True,

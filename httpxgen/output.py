@@ -17,15 +17,21 @@ def write_client(
     spec: OpenAPISpec,
     package_dir: Path,
     package_name: str | None = None,
+    client_name: str | None = None,
     tags: Sequence[str] = (),
     schema_tags: Sequence[str] = (),
     check: bool = False,
 ) -> list[Path]:
     name = package_name or package_dir.name
+    if client_name is not None and len(tags) > 1:
+        raise GenerationError(
+            "client_name cannot be used with multi-tag generation; client names "
+            "are derived from tags"
+        )
     rendered = (
         generate_workspace(spec, tags, name, schema_tags=schema_tags)
         if len(tags) > 1
-        else generate_client(spec, name)
+        else generate_client(spec, name, client_name=client_name)
     )
     output = _managed_output(package_dir, rendered)
     changed = _changed_files(package_dir, output)

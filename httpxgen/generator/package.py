@@ -1,3 +1,4 @@
+import keyword
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -16,14 +17,22 @@ _RESERVED_NAMES = {
     "Annotated",
     "Any",
     "ApiError",
+    "AsyncHttpClient",
     "ApiResponse",
     "BaseModel",
     "ConfigDict",
     "Field",
     "HttpMethods",
+    "HttpResponse",
     "Literal",
     "StrEnum",
     "TypeAdapter",
+    "BinaryContent",
+    "BinaryStream",
+    "ClientError",
+    "ResponseValidationError",
+    "TransportError",
+    "UploadFile",
     "UUID",
     "date",
     "datetime",
@@ -35,6 +44,14 @@ _LINE_LENGTH = 88
 def validate_package_names(
     schemas: Mapping[str, Any], operations: Sequence[Operation], client_name: str
 ) -> None:
+    if not client_name.isidentifier() or keyword.iskeyword(client_name):
+        raise GenerationError(
+            f"client name {client_name!r} is not a valid Python class identifier"
+        )
+    if client_name in _RESERVED_NAMES:
+        raise GenerationError(
+            f"client name {client_name!r} conflicts with a generated support type"
+        )
     exported_models = exported_model_names(schemas)
     query_models = [
         query_model_name(operation)
@@ -119,11 +136,34 @@ def render_package_init(
     _check_no_name_collisions(models, client_name)
     imports = [
         f"from .client import {client_name}",
-        "from .exceptions import ApiError",
+        (
+            "from .exceptions import (ApiError, ClientError, "
+            "ResponseValidationError, TransportError)"
+        ),
         "from .http_methods import HttpMethods",
+        (
+            "from .transport import (AsyncHttpClient, BinaryContent, BinaryStream, "
+            "HttpResponse, UploadFile)"
+        ),
         *_model_import(".models", models),
     ]
-    return _render_init(imports, ["ApiError", "HttpMethods", client_name, *models])
+    return _render_init(
+        imports,
+        [
+            "ApiError",
+            "AsyncHttpClient",
+            "BinaryContent",
+            "BinaryStream",
+            "ClientError",
+            "HttpMethods",
+            "HttpResponse",
+            "ResponseValidationError",
+            "TransportError",
+            "UploadFile",
+            client_name,
+            *models,
+        ],
+    )
 
 
 def render_client_package_init(client_name: str, models: Sequence[str]) -> str:
@@ -151,12 +191,24 @@ def render_workspace_init(
                 *_model_import(f".{module}.models", models_by_module.get(module, ())),
             )
         ),
-        "from .shared import ApiError, HttpMethods",
+        (
+            "from .shared import (ApiError, AsyncHttpClient, BinaryContent, "
+            "BinaryStream, ClientError, HttpMethods, HttpResponse, "
+            "ResponseValidationError, TransportError, UploadFile)"
+        ),
         *_model_import(".shared.models", shared_models),
     ]
     names = [
         "ApiError",
+        "AsyncHttpClient",
+        "BinaryContent",
+        "BinaryStream",
+        "ClientError",
         "HttpMethods",
+        "HttpResponse",
+        "ResponseValidationError",
+        "TransportError",
+        "UploadFile",
         *(name for _, name in clients),
         *shared_models,
         *(name for models in models_by_module.values() for name in models),
