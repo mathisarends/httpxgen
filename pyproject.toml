@@ -63,3 +63,4 @@ testpaths = ["tests"]
 [tool.coverage.run]
 branch = true
 source = ["httpxgen"]
+omit = ["httpxgen/generator/templates/*"]

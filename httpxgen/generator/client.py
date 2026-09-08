@@ -657,10 +657,10 @@ def _render_response_handling(responses: Sequence[Response]) -> str:
             if response.success:
                 lines.append(f"            return {result}\n")
                 continue
-            lines.append(f"            parsed_body = {result}\n")
+            lines.append(f"            detail = {result}\n")
         else:
             lines.extend(_render_content_response(contents))
-            result = _response_result(response, "parsed_body", " " * 12)
+            result = _response_result(response, "detail", " " * 12)
             if response.success:
                 lines.append(f"            return {result}\n")
                 continue
@@ -668,7 +668,7 @@ def _render_response_handling(responses: Sequence[Response]) -> str:
             lines.append(
                 _wrap(
                     "raise ApiError(response.status_code, response.text, "
-                    "parsed_body, response)",
+                    "detail, response)",
                     " " * 12,
                 )
             )
@@ -723,7 +723,7 @@ def _render_content_response(contents: Sequence[ResponseContent]) -> list[str]:
                     f"            {keyword} response_content_type == "
                     f"{string_literal(normalized)}:\n"
                 ),
-                f"                parsed_body = {_response_expression(content)}\n",
+                f"                detail = {_response_expression(content)}\n",
             ]
         )
     lines.extend(

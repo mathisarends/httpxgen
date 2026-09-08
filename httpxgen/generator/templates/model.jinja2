@@ -1,0 +1,9 @@
+class {{ name }}({{ base }}):
+    model_config = ConfigDict(extra="{{ extra_mode }}", populate_by_name=True)
+
+{% for field in fields %}
+    {{ field }}
+{% endfor %}
+{% if not fields %}
+    pass
+{% endif %}

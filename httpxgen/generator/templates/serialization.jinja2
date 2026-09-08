@@ -1,0 +1,130 @@
+from base64 import b64encode
+from collections.abc import Mapping, Sequence
+from enum import Enum
+from typing import Any, NamedTuple
+from urllib.parse import quote
+
+type Credential = str | tuple[str, str]
+
+_RESERVED_CHARACTERS = ":/?#[]@!$&'()*+,;="
+
+
+class SecurityScheme(NamedTuple):
+    kind: str
+    location: str
+    parameter_name: str
+    prefix: str = ""
+
+
+SECURITY_SCHEMES: dict[str, SecurityScheme] = {{ security_schemes }}
+
+
+def scalar(value: Any) -> str:
+    if isinstance(value, Enum):
+        value = value.value
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def serialize_simple(value: Any, *, explode: bool = False) -> str:
+    value = _plain(value)
+    if isinstance(value, Mapping):
+        if explode:
+            return ",".join(
+                f"{scalar(key)}={scalar(item)}" for key, item in value.items()
+            )
+        return ",".join(scalar(item) for pair in value.items() for item in pair)
+    if isinstance(value, (list, tuple)):
+        return ",".join(scalar(item) for item in value)
+    return scalar(value)
+
+
+def serialize_query(
+    name: str, value: Any, style: str = "form", *, explode: bool = True
+) -> list[tuple[str, str]]:
+    value = _plain(value)
+    if style == "deepObject" and isinstance(value, Mapping):
+        return [(f"{name}[{key}]", scalar(item)) for key, item in value.items()]
+    if style == "form" and explode:
+        if isinstance(value, Mapping):
+            return [(scalar(key), scalar(item)) for key, item in value.items()]
+        if isinstance(value, (list, tuple)):
+            return [(name, scalar(item)) for item in value]
+    delimiter = _DELIMITERS.get(style, ",")
+    if isinstance(value, Mapping):
+        pairs = [item for pair in value.items() for item in pair]
+        return [(name, delimiter.join(scalar(item) for item in pairs))]
+    if isinstance(value, (list, tuple)):
+        return [(name, delimiter.join(scalar(item) for item in value))]
+    return [(name, scalar(value))]
+
+
+def serialize_path(
+    name: str,
+    value: Any,
+    style: str = "simple",
+    *,
+    explode: bool = False,
+    allow_reserved: bool = False,
+) -> str:
+    rendered = quote(
+        serialize_simple(value, explode=explode),
+        safe=_RESERVED_CHARACTERS if allow_reserved else "",
+    )
+    if style == "label":
+        return f".{rendered}"
+    if style == "matrix":
+        return f";{name}={rendered}"
+    return rendered
+
+
+def apply_security(
+    credentials: Mapping[str, Credential],
+    requirements: Sequence[Sequence[str]],
+    headers: dict[str, str],
+    query: list[tuple[str, str]],
+    cookies: dict[str, str],
+) -> None:
+    selected = next(
+        (
+            requirement
+            for requirement in requirements
+            if all(name in credentials for name in requirement)
+        ),
+        None,
+    )
+    if selected is None:
+        choices = " or ".join(" + ".join(item) for item in requirements)
+        raise ValueError(f"missing credentials for {choices}")
+    for name in selected:
+        scheme = SECURITY_SCHEMES[name]
+        value = _credential_value(scheme, name, credentials[name])
+        if scheme.location == "header":
+            headers[scheme.parameter_name] = value
+        elif scheme.location == "query":
+            query.append((scheme.parameter_name, value))
+        else:
+            cookies[scheme.parameter_name] = value
+
+
+_DELIMITERS = {"spaceDelimited": " ", "pipeDelimited": "|"}
+
+
+def _plain(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json", by_alias=True, exclude_none=True)
+    return value
+
+
+def _credential_value(scheme: SecurityScheme, name: str, credential: Credential) -> str:
+    if scheme.kind == "basic":
+        if not isinstance(credential, tuple):
+            raise TypeError(f"credential {name!r} must be a (username, password) tuple")
+        username, password = credential
+        return f"Basic {b64encode(f'{username}:{password}'.encode()).decode()}"
+    if not isinstance(credential, str):
+        raise TypeError(f"credential {name!r} must be a string")
+    return f"{scheme.prefix} {credential}" if scheme.prefix else credential

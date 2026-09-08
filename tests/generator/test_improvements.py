@@ -47,6 +47,31 @@ def test_client_name_uses_package_leaf_and_exact_override():
     )["client.py"]
     with pytest.raises(GenerationError, match="valid Python class identifier"):
         generate_client(spec, "api", client_name="not valid")
+    with pytest.raises(GenerationError, match="generated support type"):
+        generate_client(spec, "api", client_name="UploadFile")
+
+
+def test_invalid_client_name_and_multi_tag_override_write_nothing(
+    tmp_path, generatable_spec
+):
+    invalid_output = tmp_path / "invalid"
+    with pytest.raises(GenerationError, match="valid Python class identifier"):
+        write_client(
+            spec=generatable_spec,
+            package_dir=invalid_output,
+            client_name="class",
+        )
+    assert not invalid_output.exists()
+
+    workspace_output = tmp_path / "workspace"
+    with pytest.raises(GenerationError, match="multi-tag generation"):
+        write_client(
+            spec=generatable_spec,
+            package_dir=workspace_output,
+            client_name="CustomClient",
+            tags=["payments", "invoices"],
+        )
+    assert not workspace_output.exists()
 
 
 def test_operation_failures_share_one_exception_base(tmp_path):
@@ -161,10 +186,16 @@ def test_binary_response_streams_and_buffered_method_uses_same_path(tmp_path):
     package = _load(tmp_path, "stream_api", spec)
     responses = []
 
+    class ChunkStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b"ab"
+            yield b"cd"
+            yield b"ef"
+
     def handler(request):
         response = httpx.Response(
             200,
-            content=b"abcdef",
+            stream=ChunkStream(),
             headers={
                 "Content-Type": "video/webm; codecs=vp9",
                 "Content-Length": "6",
@@ -184,6 +215,7 @@ def test_binary_response_streams_and_buffered_method_uses_same_path(tmp_path):
                     assert recording.media_type == "video/webm"
                     assert recording.content_length == 6
                     assert recording.filename == "capture.webm"
+                    assert not responses[-1].is_closed
                     assert b"".join(
                         [chunk async for chunk in recording.iter_bytes(chunk_size=2)]
                     ) == b"abcdef"
