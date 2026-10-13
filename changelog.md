@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 023 — Count oneOf matches without coercion
+
+- Determine oneOf branch membership with strict JSON validation, preserving formatted strings and integral JSON number semantics.
+- Continue rejecting zero or overlapping matches.
+- Added numeric-string, integer/boolean, integral-number, formatted-string, and overlap regressions; regenerated the preview.
+
 ### Ticket 022 — Model leading-underscore properties
 
 - Give leading-underscore schema properties public Python names with explicit wire aliases, retaining required/type/constraint validation.

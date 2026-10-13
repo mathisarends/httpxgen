@@ -15,6 +15,63 @@ from httpxgen.generator import GenerationError
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize(
+    "branches,value,valid",
+    [
+        ([{"type": "string"}, {"type": "integer"}], "123", True),
+        ([{"type": "string"}, {"type": "integer"}], 123, True),
+        ([{"type": "string"}, {"type": "integer"}], 123.0, True),
+        ([{"type": "string"}, {"type": "integer"}], True, False),
+        ([{"type": "boolean"}, {"type": "integer"}], True, True),
+        ([{"type": "boolean"}, {"type": "integer"}], 1, True),
+        (
+            [{"type": "string", "format": "date"}, {"type": "integer"}],
+            "2024-01-02",
+            True,
+        ),
+        (
+            [{"type": "string", "format": "uuid"}, {"type": "integer"}],
+            "12345678-1234-1234-1234-123456789abc",
+            True,
+        ),
+        ([{"type": "integer"}, {"type": "number"}], 1, False),
+    ],
+)
+def test_023_oneof_counts_json_membership(tmp_path, branches, value, valid):
+    shape = {"oneOf": branches}
+    paths = {
+        "/item": {
+            "get": {
+                "operationId": "getItem",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Choice"}
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    }
+    with generated(tmp_path, paths, {"Choice": shape}) as package:
+        if valid:
+            _, result = invoke(
+                package,
+                lambda client: client.get_item(),
+                lambda _: httpx.Response(200, json=value),
+            )
+            assert result == value or str(result) == value
+        else:
+            with pytest.raises(package.ResponseValidationError, match="oneOf"):
+                invoke(
+                    package,
+                    lambda client: client.get_item(),
+                    lambda _: httpx.Response(200, json=value),
+                )
+
+
 @pytest.mark.parametrize("extra", [True, False])
 def test_022_underscore_properties_are_validated_fields(tmp_path, extra):
     shape = {
