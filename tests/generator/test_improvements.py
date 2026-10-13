@@ -36,15 +36,19 @@ def _unload(tmp_path, name):
 def test_client_name_uses_package_leaf_and_exact_override():
     spec = _spec({})
 
-    assert "class BrowserWorkerClient" in generate_client(
-        spec, "generated.browser_worker"
-    )["client.py"]
-    assert "class PaymentsClient" in generate_client(spec, "company.payments")[
-        "client.py"
-    ]
-    assert "class Provisioner" in generate_client(
-        spec, "generated.api", client_name="Provisioner"
-    )["client.py"]
+    assert (
+        "class BrowserWorkerClient"
+        in generate_client(spec, "generated.browser_worker")["client.py"]
+    )
+    assert (
+        "class PaymentsClient" in generate_client(spec, "company.payments")["client.py"]
+    )
+    assert (
+        "class Provisioner"
+        in generate_client(spec, "generated.api", client_name="Provisioner")[
+            "client.py"
+        ]
+    )
     with pytest.raises(GenerationError, match="valid Python class identifier"):
         generate_client(spec, "api", client_name="not valid")
     with pytest.raises(GenerationError, match="generated support type"):
@@ -106,6 +110,7 @@ def test_operation_failures_share_one_exception_base(tmp_path):
     )
     package = _load(tmp_path, "errors_api", spec)
     try:
+
         async def exercise():
             class BadString:
                 def __str__(self):
@@ -206,6 +211,7 @@ def test_binary_response_streams_and_buffered_method_uses_same_path(tmp_path):
         return response
 
     try:
+
         async def exercise():
             async with httpx.AsyncClient(
                 transport=httpx.MockTransport(handler)
@@ -216,9 +222,15 @@ def test_binary_response_streams_and_buffered_method_uses_same_path(tmp_path):
                     assert recording.content_length == 6
                     assert recording.filename == "capture.webm"
                     assert not responses[-1].is_closed
-                    assert b"".join(
-                        [chunk async for chunk in recording.iter_bytes(chunk_size=2)]
-                    ) == b"abcdef"
+                    assert (
+                        b"".join(
+                            [
+                                chunk
+                                async for chunk in recording.iter_bytes(chunk_size=2)
+                            ]
+                        )
+                        == b"abcdef"
+                    )
                 assert responses[-1].is_closed
                 assert await client.download_recording() == b"abcdef"
 
@@ -313,15 +325,14 @@ def test_multipart_arrays_preserve_files_and_do_not_read_eagerly(tmp_path):
         return httpx.Response(204)
 
     try:
+
         async def exercise():
             first = ChunkOnlyFile(b"first")
             second = ChunkOnlyFile(b"second")
             async with httpx.AsyncClient(
                 transport=httpx.MockTransport(handler)
             ) as http_client:
-                client = package.UploadsApiClient(
-                    http_client, "https://example.test"
-                )
+                client = package.UploadsApiClient(http_client, "https://example.test")
                 await client.upload_documents(
                     documents=[
                         package.UploadFile(

@@ -22,8 +22,8 @@ class TemplateName(StrEnum):
 
 
 def render_template(template_name: TemplateName, **context: object) -> str:
-    return _environment().get_template(f"{template_name.value}.jinja2").render(
-        **context
+    return (
+        _environment().get_template(f"{template_name.value}.jinja2").render(**context)
     )
 
 

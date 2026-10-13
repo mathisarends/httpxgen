@@ -312,9 +312,10 @@ def test_generate_workspace_shares_support_modules_between_tag_packages(
     assert "class Invoice(BaseEntity):" in files["invoices/models.py"]
     assert "class Charge" not in files["invoices/models.py"]
     assert "    InvoiceLineItem," not in files["invoices/client.py"]
-    assert "from api.shared.models import ApiErrorModel, Money" not in files[
-        "payments/client.py"
-    ]
+    assert (
+        "from api.shared.models import ApiErrorModel, Money"
+        not in files["payments/client.py"]
+    )
     for tag in ("payments", "invoices"):
         client = files[f"{tag}/client.py"]
         assert "    ApiError," in client
