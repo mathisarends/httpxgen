@@ -119,9 +119,11 @@ def serialize_path(
         safe=_RESERVED_CHARACTERS if allow_reserved else "",
     )
     if style == "label":
-        return f".{rendered}"
+        rendered = f".{rendered}"
     if style == "matrix":
-        return f";{name}={rendered}"
+        rendered = f";{name}={rendered}"
+    if rendered in {".", ".."}:
+        return rendered.replace(".", "%2E")
     return rendered
 
 
