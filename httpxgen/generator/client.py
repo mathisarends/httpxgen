@@ -156,7 +156,10 @@ def _render_client_imports(
         lines.append("from uuid import UUID")
     lines.append("")
     if _needs_type_adapter(operations):
-        lines.append("from pydantic import TypeAdapter")
+        names = ["TypeAdapter"]
+        if "Field(" in annotations:
+            names.insert(0, "Field")
+        lines.append(f"from pydantic import {', '.join(names)}")
     lines.append("")
     by_module: dict[str, list[str]] = {}
     by_module.setdefault(layout.exceptions, []).extend(

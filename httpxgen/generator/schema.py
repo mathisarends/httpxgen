@@ -5,6 +5,39 @@ from httpxgen.generator.naming import class_name, string_literal
 
 
 def schema_type(
+    schema: Mapping[str, Any],
+    schemas: Mapping[str, Any] | None = None,
+    *,
+    include_constraints: bool = True,
+) -> str:
+    annotation = _schema_type(schema, schemas)
+    arguments = []
+    if include_constraints:
+        for source, target in _ANNOTATION_CONSTRAINTS.items():
+            if source in schema and not isinstance(schema[source], bool):
+                arguments.append(f"{target}={schema[source]!r}")
+    if arguments:
+        return f"Annotated[{annotation}, Field({', '.join(arguments)})]"
+    return annotation
+
+
+_ANNOTATION_CONSTRAINTS = {
+    "minimum": "ge",
+    "maximum": "le",
+    "exclusiveMinimum": "gt",
+    "exclusiveMaximum": "lt",
+    "multipleOf": "multiple_of",
+    "minLength": "min_length",
+    "maxLength": "max_length",
+    "pattern": "pattern",
+    "minItems": "min_length",
+    "maxItems": "max_length",
+    "minProperties": "min_length",
+    "maxProperties": "max_length",
+}
+
+
+def _schema_type(
     schema: Mapping[str, Any], schemas: Mapping[str, Any] | None = None
 ) -> str:
     if "$ref" in schema:

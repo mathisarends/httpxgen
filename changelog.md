@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 024 — Retain scalar, root-container, and item constraints
+
+- Carry supported numeric/string/container constraints in reusable `Annotated` types, including scalar components and nested array items.
+- Import annotation dependencies in inline operation modules while retaining readable direct model fields.
+- Added scalar/root/item runtime validation regressions and regenerated the preview.
+
 ### Ticket 023 — Count oneOf matches without coercion
 
 - Determine oneOf branch membership with strict JSON validation, preserving formatted strings and integral JSON number semantics.
