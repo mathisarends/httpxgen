@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 011 — Serialize multipart object fields as JSON
+
+- Encode objects and object-array items as JSON parts with aliases and correct media types; respect JSON/+json contentType metadata and file content types.
+- Reject unsupported multipart encoding options during generation.
+- Added real multipart-parser regressions and regenerated the preview.
+
 ### Ticket 010 — Give upload file parts filenames
 
 - Bytes/default `UploadFile` inputs use a fallback filename; bare handles use their basename without eager reads.

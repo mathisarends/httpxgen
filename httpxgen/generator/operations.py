@@ -50,6 +50,8 @@ class MultipartField:
     required: bool
     is_file: bool = False
     is_array: bool = False
+    content_type: str | None = None
+    json_annotation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -342,10 +344,47 @@ def _read_bodies(
         _, shape = split_all_of(shape)
         required_fields = set(shape.get("required", ()))
         multipart_fields: list[MultipartField] = []
+        encodings = value.content[media_type].encoding if kind == "multipart" else {}
+        unknown = set(encodings) - set(shape.get("properties", {}))
+        if unknown:
+            raise GenerationError(
+                f"multipart encoding names unknown properties: {sorted(unknown)}"
+            )
         for name, field in shape.get("properties", {}).items():
             is_array = field.get("type") == "array"
             item = field.get("items", {}) if is_array else field
             is_file = item.get("format") == "binary"
+            encoding = encodings.get(name, {})
+            unsupported = set(encoding) - {"contentType"}
+            if unsupported:
+                raise GenerationError(
+                    f"multipart field {name!r} has unsupported encoding options: "
+                    f"{sorted(unsupported)}"
+                )
+            item_shape = item
+            if "$ref" in item:
+                item_shape = spec.components.schemas.get(
+                    _reference_name(item["$ref"], "schemas"), item
+                )
+            content_type = encoding.get("contentType")
+            structured = is_object(item_shape)
+            if content_type is None and structured:
+                content_type = "application/json"
+            json_encoded = content_type is not None and (
+                content_type.split(";", 1)[0].lower() == "application/json"
+                or content_type.split(";", 1)[0].lower().endswith("+json")
+            )
+            if (
+                kind == "multipart"
+                and not is_file
+                and content_type
+                and not json_encoded
+                and (structured or content_type != "text/plain")
+            ):
+                raise GenerationError(
+                    f"multipart field {name!r} has unsupported contentType "
+                    f"{content_type!r}"
+                )
             field_annotation = (
                 "Sequence[UploadInput]"
                 if is_file and is_array
@@ -361,6 +400,10 @@ def _read_bodies(
                     required=name in required_fields,
                     is_file=is_file,
                     is_array=is_array,
+                    content_type=content_type,
+                    json_annotation=schema_type(item)
+                    if json_encoded and not is_file
+                    else None,
                 )
             )
         binary_fields = tuple(

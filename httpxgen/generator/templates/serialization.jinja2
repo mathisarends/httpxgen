@@ -18,6 +18,10 @@ class UnsetType:
 UNSET = UnsetType()
 
 
+def serialize_json_part(value: Any, annotation: Any) -> str:
+    return TypeAdapter(annotation).dump_json(value, by_alias=True).decode()
+
+
 def serialize_json_body(value: Any, annotation: Any, *, partial: bool = False) -> Any:
     return TypeAdapter(annotation).dump_python(
         value, mode="json", by_alias=True, exclude=_unset_null_fields(value),

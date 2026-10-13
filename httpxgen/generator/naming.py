@@ -55,6 +55,7 @@ _OPERATION_LOCALS = {
     "binary_stream",
     "stream_result",
     "binary_content",
+    "serialize_json_part",
     "stream",
     "item",
     "scalar",
