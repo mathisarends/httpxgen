@@ -15,6 +15,55 @@ from httpxgen.generator import GenerationError
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize("required", [False, True])
+@pytest.mark.parametrize("variants", [False, True])
+def test_026_json_request_inputs_are_validated_before_transport(
+    tmp_path, required, variants
+):
+    content = {"application/json": {"schema": {"$ref": "#/components/schemas/Input"}}}
+    if variants:
+        content["text/plain"] = {"schema": {"type": "string"}}
+    paths = {
+        "/item": {
+            "post": {
+                "operationId": "createItem",
+                "requestBody": {"required": required, "content": content},
+                "responses": {"204": {}},
+            }
+        }
+    }
+    shape = {
+        "type": "object",
+        "required": ["count"],
+        "properties": {
+            "count": {"type": "integer", "minimum": 1},
+            "display-name": {"type": ["string", "null"]},
+        },
+    }
+    with generated(tmp_path, paths, {"Input": shape}) as package:
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(204)
+
+        mutated = package.Input(count=2)
+        mutated.count = "oops"
+        for invalid in [{"count": "oops"}, {"count": 0}, {}, mutated]:
+            with pytest.raises(package.RequestValidationError):
+                invoke(
+                    package,
+                    lambda client, invalid=invalid: client.create_item(invalid),
+                    handler,
+                )
+        assert calls == []
+        seen, _ = invoke(
+            package,
+            lambda client: client.create_item({"count": 2, "display-name": None}),
+        )
+        assert json.loads(seen[0].content) == {"count": 2, "display-name": None}
+
+
 @pytest.mark.parametrize("value,other", [("a", "b"), (1, 2), (1.5, 2.5)])
 @pytest.mark.parametrize("inline", [False, True])
 def test_025_const_and_enum_are_intersected(tmp_path, value, other, inline):

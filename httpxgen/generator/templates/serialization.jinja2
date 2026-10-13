@@ -49,10 +49,30 @@ def serialize_form_body(
 
 
 def serialize_json_body(value: Any, annotation: Any, *, partial: bool = False) -> Any:
-    return TypeAdapter(annotation).dump_python(
+    adapter = TypeAdapter(annotation)
+    value = adapter.validate_python(_validation_input(value))
+    return adapter.dump_python(
         value, mode="json", by_alias=True, exclude=_unset_null_fields(value),
         exclude_unset=partial,
     )
+
+
+def _validation_input(value: Any) -> Any:
+    if isinstance(value, RootModel):
+        return _validation_input(value.root)
+    if isinstance(value, BaseModel):
+        result = {
+            field.serialization_alias or field.alias or name: _validation_input(getattr(value, name))
+            for name, field in type(value).model_fields.items()
+            if name in value.model_fields_set
+        }
+        result.update({key: _validation_input(item) for key, item in (value.model_extra or {}).items()})
+        return result
+    if isinstance(value, Mapping):
+        return {key: _validation_input(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_validation_input(item) for item in value]
+    return value
 
 
 def _unset_null_fields(value: Any) -> dict[Any, Any]:
