@@ -15,6 +15,53 @@ from httpxgen.generator import GenerationError
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize("tags", [[], ["one"], ["one", "two"]])
+@pytest.mark.parametrize("override", [False, True])
+def test_016_referenced_path_items_retain_parameters_and_tags(tmp_path, tags, override):
+    parameter = {
+        "name": "id",
+        "in": "path",
+        "required": True,
+        "schema": {"type": "string"},
+    }
+    item = {
+        "parameters": [parameter],
+        "get": {
+            "operationId": "getItem",
+            "tags": ["one", "two"],
+            "responses": {
+                "200": {"content": {"application/json": {"schema": {"type": "string"}}}}
+            },
+        },
+    }
+    path = {"$ref": "#/components/pathItems/Item"}
+    if override:
+        path["parameters"] = [
+            parameter,
+            {"name": "q", "in": "query", "schema": {"type": "string"}},
+        ]
+    paths = {"/x/{id}": path}
+    components = {"pathItems": {"Item": item}}
+    with generated(tmp_path, paths, tags=tags, components=components) as package:
+        kwargs = {"q": "authored"} if override else {}
+        seen, result = invoke(
+            package,
+            lambda client: client.get_item("value", **kwargs),
+            lambda _: httpx.Response(200, json="ok"),
+            client_name="OneClient" if len(tags) > 1 else "TicketApiClient",
+        )
+        assert seen[0].url.path == "/x/value"
+        assert result == "ok"
+        if override:
+            assert seen[0].url.params["q"] == "authored"
+    components["pathItems"]["Item"] = {"$ref": "#/components/pathItems/Item"}
+    with (
+        pytest.raises(GenerationError, match="cyclic Path Item"),
+        generated(tmp_path / "cycle", paths, tags=tags, components=components),
+    ):
+        pass
+
+
 @pytest.mark.parametrize("tags", [["one"], ["one", "two"]])
 def test_015_tag_selection_follows_reusable_components(tmp_path, tags):
     components = {

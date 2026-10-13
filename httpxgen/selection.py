@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from httpxgen.generator.errors import GenerationError
+from httpxgen.generator.operations import resolve_path_item
 from httpxgen.openapi import (
     APIOperation,
     Components,
@@ -21,6 +22,14 @@ def filter_operations_by_tags(
     requested = tuple(dict.fromkeys(tags))
     if not requested:
         return spec.model_copy(deep=True)
+
+    spec = spec.model_copy(
+        update={
+            "paths": {
+                path: resolve_path_item(item, spec) for path, item in spec.paths.items()
+            }
+        }
+    )
 
     available = _operation_tags(spec)
     schema_only = tuple(dict.fromkeys(schema_tags))

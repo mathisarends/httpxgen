@@ -121,7 +121,7 @@ def read_operations(spec: OpenAPISpec) -> tuple[Operation, ...]:
     operations: list[Operation] = []
     schemes = read_security_schemes(spec)
     for path in sorted(spec.paths):
-        path_item = _resolve_path_item(spec.paths[path], spec)
+        path_item = resolve_path_item(spec.paths[path], spec)
         for method in HttpMethod:
             operation = get_operation(path_item, method)
             if operation is None:
@@ -202,11 +202,21 @@ def query_model_name(operation: Operation) -> str:
     return f"{class_name(operation.name)}Params"
 
 
-def _resolve_path_item(value: PathItem, spec: OpenAPISpec) -> PathItem:
+def resolve_path_item(
+    value: PathItem, spec: OpenAPISpec, seen: frozenset[str] = frozenset()
+) -> PathItem:
     if value.ref is None:
         return value
+    if value.ref in seen:
+        raise GenerationError(f"cyclic Path Item reference: {value.ref}")
     raw = _resolve_component(value.ref, "pathItems", spec.components.path_items)
-    merged = {**raw, **value.model_dump(by_alias=True, exclude_none=True)}
+    inherited = resolve_path_item(
+        PathItem.model_validate(raw), spec, seen | {value.ref}
+    )
+    merged = {
+        **inherited.model_dump(by_alias=True, exclude_none=True, exclude_unset=True),
+        **value.model_dump(by_alias=True, exclude_none=True, exclude_unset=True),
+    }
     merged.pop("$ref", None)
     return PathItem.model_validate(merged)
 

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 016 — Resolve Path Item references before selection
+
+- Resolve local Path Item chains before normalization/tag selection, preserving inherited parameters when no override was authored.
+- Explicit siblings replace corresponding inherited fields; cyclic references fail generation.
+- Added untagged/single-tag/workspace runtime regressions, sibling overrides, and cycle rejection.
+
 ### Ticket 015 — Follow reusable references during tag selection
 
 - Traverse the reusable component graph with cycle protection and retain the schemas, request bodies, responses, parameters, and headers needed by selected operations.
