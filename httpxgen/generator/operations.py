@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from httpxgen.generator.errors import GenerationError
-from httpxgen.generator.naming import class_name, enum_member, identifier
+from httpxgen.generator.naming import (
+    argument_identifier,
+    class_name,
+    enum_member,
+    identifier,
+)
 from httpxgen.generator.schema import is_object, schema_type, split_all_of
 from httpxgen.openapi import (
     APIHeader,
@@ -243,7 +248,7 @@ def _read_parameters(
         explode = value.explode if value.explode is not None else style == "form"
         parameters.append(
             Parameter(
-                name=identifier(value.name),
+                name=argument_identifier(value.name),
                 wire_name=value.name,
                 location=value.location,
                 annotation=annotation,
@@ -350,7 +355,7 @@ def _read_bodies(
             )
             multipart_fields.append(
                 MultipartField(
-                    name=identifier(name),
+                    name=argument_identifier(name),
                     wire_name=name,
                     annotation=field_annotation,
                     required=name in required_fields,
