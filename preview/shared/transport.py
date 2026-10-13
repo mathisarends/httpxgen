@@ -3,9 +3,12 @@
 # ============================================================================
 
 
-from collections.abc import AsyncIterable, AsyncIterator, Iterable, Mapping
+from __future__ import annotations
+
+from collections.abc import AsyncIterable, AsyncIterator, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from email.message import Message
+from types import TracebackType
 from typing import Any, BinaryIO, Protocol, runtime_checkable
 
 from preview.shared.exceptions import ClientError, TransportError
@@ -25,8 +28,11 @@ def binary_content(value: BinaryContent) -> bytes | AsyncIterable[bytes]:
 
 
 class HttpResponse(Protocol):
-    status_code: int
-    headers: Mapping[str, str]
+    @property
+    def status_code(self) -> int: ...
+
+    @property
+    def headers(self) -> Mapping[str, str]: ...
 
     @property
     def text(self) -> str: ...
@@ -44,16 +50,38 @@ class HttpResponse(Protocol):
 class AsyncResponseContextManager(Protocol):
     async def __aenter__(self) -> HttpResponse: ...
 
-    async def __aexit__(self, *exc_info: object) -> object: ...
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None,
+        exc_value: BaseException | None, traceback: TracebackType | None, /
+    ) -> bool | None: ...
 
 
 @runtime_checkable
 class AsyncHttpClient(Protocol):
-    async def request(self, method: str, url: str, **kwargs: Any) -> HttpResponse: ...
+    async def request(
+        self, method: str, url: str, *,
+        params: tuple[tuple[str, str], ...] | str | None = None,
+        headers: Mapping[str, str] | None = None,
+        cookies: dict[str, str] | None = None,
+        content: BinaryContent | str | None = None,
+        data: Mapping[str, Any] | None = None,
+        files: Sequence[tuple[str, FilePart]] | None = None,
+        json: Any = None,
+        timeout: float | None = None,
+    ) -> HttpResponse: ...
 
     def stream(
-        self, method: str, url: str, **kwargs: Any
+        self, method: str, url: str, *,
+        params: tuple[tuple[str, str], ...] | str | None = None,
+        headers: Mapping[str, str] | None = None,
+        cookies: dict[str, str] | None = None,
+        content: BinaryContent | str | None = None,
+        data: Mapping[str, Any] | None = None,
+        files: Sequence[tuple[str, FilePart]] | None = None,
+        json: Any = None,
+        timeout: float | None = None,
     ) -> AsyncResponseContextManager: ...
+
 
     async def aclose(self) -> None: ...
 

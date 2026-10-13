@@ -741,7 +741,7 @@ def _render_request_arguments(operation: Operation) -> list[str]:
         'url=f"{self._base_url}{path}"',
     ]
     if _needs_query(operation):
-        arguments.append("params=query")
+        arguments.append("params=tuple(query)")
     arguments.append(
         "headers=headers" if _needs_headers(operation) else "headers=self._headers"
     )

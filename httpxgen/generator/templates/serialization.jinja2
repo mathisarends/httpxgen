@@ -78,6 +78,8 @@ def _validation_input(value: Any) -> Any:
 def _unset_null_fields(value: Any) -> dict[Any, Any]:
     if isinstance(value, RootModel):
         return _unset_null_fields(value.root)
+    fields: Mapping[Any, Any]
+    unset: set[Any]
     if isinstance(value, BaseModel):
         fields = {name: getattr(value, name) for name in type(value).model_fields}
         unset = fields.keys() - value.model_fields_set

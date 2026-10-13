@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Ticket 029 — Make transport protocols statically compatible
+
+- Use read-only response properties, accurate async context-manager exit types, and explicit supported request/stream arguments compatible with HTTPX.
+- Pass query pairs as immutable tuples and fix generated serialization helper annotations.
+- Add a Mypy consumer regression that also checks ordinary and binary-header generated operation code, and run it explicitly in CI.
+- Verify protocol assignment against both HTTPX 0.28.1 and HTTPX2 2.13.1 without casts.
+
 ### Ticket 028 — Preserve binary response header models
 
 - Buffered binary responses with declared headers return the ordinary typed result model; streaming variants yield a typed stream result with a `BinaryStream` body.
