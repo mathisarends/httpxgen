@@ -2,7 +2,13 @@
 
 ## Unreleased
 
-### Ticket 001 â€” Preserve explicit JSON null fields
+### Ticket 002 — Omit unset defaults from JSON Merge Patch
+
+- Merge patches serialize only explicitly supplied fields, recursively and by alias; explicit default values and null deletion instructions remain present.
+- Ordinary JSON requests retain their existing non-null default behavior.
+- Added a generated-client regression for explicit defaults and nested aliases.
+
+### Ticket 001 — Preserve explicit JSON null fields
 
 - JSON request serialization preserves explicit nulls, including nested and aliased fields, while omitting unset nullable fields.
 - Ordinary request models continue to send non-null schema defaults. JSON Merge Patch default omission is handled separately by ticket 002.
