@@ -15,6 +15,48 @@ from httpxgen.generator import GenerationError
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize("value,other", [("a", "b"), (1, 2), (1.5, 2.5)])
+@pytest.mark.parametrize("inline", [False, True])
+def test_025_const_and_enum_are_intersected(tmp_path, value, other, inline):
+    shape = {
+        "type": "string" if isinstance(value, str) else "number",
+        "const": value,
+        "enum": [value, other],
+    }
+    schema = shape if inline else {"$ref": "#/components/schemas/Value"}
+    paths = {
+        "/item": {
+            "get": {
+                "operationId": "getItem",
+                "responses": {
+                    "200": {"content": {"application/json": {"schema": schema}}}
+                },
+            }
+        }
+    }
+    with generated(tmp_path, paths, {} if inline else {"Value": shape}) as package:
+        _, result = invoke(
+            package,
+            lambda client: client.get_item(),
+            lambda _: httpx.Response(200, json=value),
+        )
+        assert result == value
+        with pytest.raises(package.ResponseValidationError):
+            invoke(
+                package,
+                lambda client: client.get_item(),
+                lambda _: httpx.Response(200, json=other),
+            )
+    shape["enum"] = [other]
+    with (
+        pytest.raises(GenerationError, match="contradictory"),
+        generated(
+            tmp_path / "contradiction", paths, {} if inline else {"Value": shape}
+        ),
+    ):
+        pass
+
+
 @pytest.mark.parametrize(
     "shape,invalid,valid",
     [

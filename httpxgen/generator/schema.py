@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 from typing import Any
 
+from httpxgen.generator.errors import GenerationError
 from httpxgen.generator.naming import class_name, string_literal
 
 
@@ -60,6 +61,12 @@ def _schema_type(
             annotation += " | None"
         return annotation
     if "const" in schema:
+        if "enum" in schema and not any(
+            _json_equal(schema["const"], item) for item in schema["enum"]
+        ):
+            raise GenerationError(
+                "schema const is excluded by enum; constraints are contradictory"
+            )
         return f"Literal[{_literal(schema['const'])}]"
     if (enum := schema.get("enum")) is not None:
         return "Literal[" + ", ".join(_literal(value) for value in enum) + "]"
@@ -180,6 +187,14 @@ def _string_type(schema: Mapping[str, Any]) -> str:
 
 def _literal(value: Any) -> str:
     return string_literal(value) if isinstance(value, str) else repr(value)
+
+
+def _json_equal(left: Any, right: Any) -> bool:
+    if isinstance(left, bool) or isinstance(right, bool):
+        return type(left) is type(right) and left == right
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return left == right
+    return type(left) is type(right) and left == right
 
 
 def schema_dependencies(value: Any) -> set[str]:
