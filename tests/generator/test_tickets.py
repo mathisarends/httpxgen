@@ -15,6 +15,44 @@ from httpxgen.generator import GenerationError
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize(
+    "wire,python_name",
+    [
+        ("model_dump", "field_model_dump"),
+        ("model_validate", "field_model_validate"),
+        ("_id", "field_id"),
+    ],
+)
+def test_021_query_fields_are_public_and_validated(tmp_path, wire, python_name):
+    paths = {
+        "/item": {
+            "get": {
+                "operationId": "getItem",
+                "parameters": [
+                    {
+                        "name": wire,
+                        "in": "query",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 3},
+                    }
+                ],
+                "responses": {"204": {}},
+            }
+        }
+    }
+    with generated(tmp_path, paths) as package:
+        seen, _ = invoke(
+            package, lambda client: client.get_item(**{python_name: "valid"})
+        )
+        assert seen[0].url.params[wire] == "valid"
+        query_model = importlib.import_module("ticket_api.models").GetItemParams
+        assert python_name in query_model.model_fields
+        with pytest.raises(package.RequestValidationError):
+            invoke(package, lambda client: client.get_item(**{python_name: "x"}))
+        with pytest.raises(TypeError):
+            invoke(package, lambda client: client.get_item())
+
+
 def test_020_content_type_control_argument_is_reserved_for_variants(tmp_path):
     content = {
         "application/json": {"schema": {"type": "string"}},

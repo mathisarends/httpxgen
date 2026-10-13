@@ -9,6 +9,7 @@ from httpxgen.generator.naming import (
     class_name,
     enum_member,
     identifier,
+    query_identifier,
 )
 from httpxgen.generator.schema import is_object, schema_type, split_all_of
 from httpxgen.openapi import (
@@ -266,7 +267,11 @@ def _read_parameters(
         explode = value.explode if value.explode is not None else style == "form"
         parameters.append(
             Parameter(
-                name=argument_identifier(value.name),
+                name=(
+                    query_identifier(value.name)
+                    if value.location == "query"
+                    else argument_identifier(value.name)
+                ),
                 wire_name=value.name,
                 location=value.location,
                 annotation=annotation,

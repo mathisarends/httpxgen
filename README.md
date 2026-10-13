@@ -541,6 +541,10 @@ client-check:
 
 ## Supported scope
 
+Query names beginning with `_` or `model_` receive a public `field`/`field_`
+prefix in generated signatures and query models. Their wire names and
+validation constraints remain intact.
+
 Operation names that collide with generated lifecycle methods or streaming
 companions fail generation before writing files; rename the conflicting
 `operationId` in the specification.
