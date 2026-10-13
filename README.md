@@ -280,6 +280,10 @@ Path parameters carry their spec format — `format: uuid` becomes `UUID`, not `
 ```
 
 Request bodies are a single typed `body` argument, serialized by alias.
+JSON inputs are validated using the declared Pydantic schema before the HTTP
+transport runs, including mappings and model instances changed after creation.
+Invalid inputs raise `RequestValidationError`; Pydantic's normal accepted
+conversions apply before serialization.
 Explicitly supplied nullable fields are sent as JSON null; unset nullable fields
 are omitted, including inside nested models:
 

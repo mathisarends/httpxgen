@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 026 — Validate JSON request body inputs
+
+- Validate declared JSON input types before serialization and transport, including mappings and mutated generated models.
+- Revalidate generated model instances while preserving aliases, explicit nulls, unset fields, and nested validation.
+- Added required/optional/media-variant pre-transport regressions; regenerated the preview.
+
 ### Ticket 025 — Enforce const/enum intersections
 
 - Render component const constraints consistently with inline schemas, retaining the intersection with enum and rejecting contradictory combinations.
