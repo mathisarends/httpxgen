@@ -1,20 +1,22 @@
 # Changelog
 
-## 0.2.0 — Unreleased
+## Unreleased
 
-### Added
+## 0.3.0 — 2026-10-13
 
-- Configurable generated HTTP backends through `--http-client`: transport-neutral `protocol` (default), concrete `httpx`, or concrete `httpx2` imports.
-- Incremental binary downloads through `stream_<operation>()`, with `BinaryStream` metadata and buffered convenience methods.
-- Lazy binary upload iterables and multipart uploads from bytes, open files, or `UploadFile`, including repeated file fields and explicit part metadata.
-- A generated `ClientError` hierarchy with `TransportError`, `RequestValidationError`, `ResponseValidationError`, and typed `ApiError` details.
+### Migration from 0.2.0
+
+- Regenerate clients and update consumers together: binary responses with declared headers now return typed result models. Read bytes from `result.body`; streaming result models expose `result.body.iter_bytes()`.
+- Omit an optional JSON body argument to send no body. Explicit `None` now sends JSON null when the schema permits it and raises `RequestValidationError` otherwise; the default is the generated `UNSET` sentinel.
+- Leading-underscore model properties use public Python field names (for example, `_id` becomes `field_id`); query parameters beginning with `_` or `model_` also use safe public names. Wire aliases remain unchanged.
+- String `format: byte` values now use standard Base64 on the JSON wire. Supply decoded Python bytes or valid Base64 strings; invalid response strings raise `ResponseValidationError`.
+- JSON request inputs and supported schema constraints are validated more consistently, and exact `oneOf` membership no longer uses string/number/boolean coercion. Previously accepted invalid data can now fail validation.
 
 ### Changed
 
-- Default single-client names use the final package segment; `--client-name` provides an explicit public class name. Regenerating a dotted package can change the class consumers import.
-- Generated clients borrow the supplied HTTP transport; closing the wrapper leaves that transport open.
-- Generated sources are rendered through Jinja templates, and CI checks lint, formatting, preview freshness, locked dependencies, and generated transport typing.
-- Package metadata now includes the MIT license and a descriptive summary.
+- Optional JSON body arguments distinguish omission from explicit null; request inputs and supported schema constraints are validated before transport.
+- Regeneration removes obsolete modules carrying the generator header, while preserving handwritten files; `--check` reports obsolete modules without removing them.
+- CI now requires locked dependencies and checks generated transport and operation typing against HTTPX and HTTPX2.
 
 ### Fixed
 
@@ -274,6 +276,22 @@
 - Apply the configured formatter to the four files failing the baseline CI format check, without runtime changes.
 - Delivered before the runtime stack so every PR can pass lint and format checks.
 - Verified all 134 baseline tests, Ruff lint/format, and unchanged generated preview output.
+
+## 0.2.0 — 2026-09-08
+
+### Added
+
+- Configurable generated HTTP backends through `--http-client`: transport-neutral `protocol` (default), concrete `httpx`, or concrete `httpx2` imports.
+- Incremental binary downloads through `stream_<operation>()`, with `BinaryStream` metadata and buffered convenience methods.
+- Binary upload iterable inputs and multipart uploads from bytes, open files, or `UploadFile`, including repeated file fields and explicit part metadata.
+- A generated `ClientError` hierarchy with `TransportError`, `RequestValidationError`, `ResponseValidationError`, and typed `ApiError` details.
+
+### Changed
+
+- Default single-client names use the final package segment; `--client-name` provides an explicit public class name. Regenerating a dotted package can change the class consumers import.
+- Generated clients borrow the supplied HTTP transport; closing the wrapper leaves that transport open.
+- Generated sources are rendered through Jinja templates, and CI checks lint, formatting, and preview freshness.
+- Package metadata now includes the MIT license and a descriptive summary.
 
 ## 0.1.0 — 2026-09-04
 

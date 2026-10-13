@@ -1,6 +1,6 @@
 [project]
 name = "httpxgen"
-version = "0.2.0"
+version = "0.3.0"
 description = "Generate a typed async httpx client from an OpenAPI document."
 readme = "README.md"
 license = "MIT"
