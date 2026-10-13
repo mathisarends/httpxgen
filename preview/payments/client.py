@@ -110,7 +110,7 @@ class PaymentsClient:
             response = await self._client.request(
                 method=HttpMethods.GET,
                 url=f"{self._base_url}{path}",
-                params=query,
+                params=tuple(query),
                 headers=headers,
                 timeout=self._timeout if timeout is None else timeout,
             )

@@ -62,3 +62,7 @@ jobs:
 
       - name: Run tests
         run: uv run pytest
+
+      - name: Type-check generated protocols
+        if: matrix.python-version == '3.14'
+        run: uv run --frozen --with mypy==2.4.0 --with httpx2==2.13.1 pytest --no-cov tests/generator/test_typing.py

@@ -613,6 +613,14 @@ uv run ruff check .          # lint
 uv run ruff format .         # format
 ```
 
+CI also checks generated transport/operation typing with Mypy against HTTPX and
+HTTPX2. Run that check locally with:
+
+```sh
+uv run --frozen --with mypy==2.4.0 --with httpx2==2.13.1 \
+  pytest --no-cov tests/generator/test_typing.py
+```
+
 `preview/` is generated output, checked in so the effect of a change is visible
 in review. Regenerate it whenever generated code changes — CI fails if it is
 stale:
