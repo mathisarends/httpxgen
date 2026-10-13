@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 042 — Honor JSON parameter content
+
+- Retain selected parameter content encoding and serialize query/header/path values as compact JSON with validation, aliases, and formatted/null values.
+- Normalize inline and reusable parameter content schemas; reject multiple media types, incompatible style options, and unsupported JSON cookie content explicitly.
+- Added real HTTPX wire regressions for inline/reusable parameters, object aliases, dates, and null/omission behavior; regenerated the preview.
+
 ### Ticket 041 — Correct path style delimiters and explode
 
 - Encode individual path values before adding simple/label/matrix syntax and implement exploded array/object expansions.
