@@ -219,6 +219,8 @@ def _render_import(prefix: str, names: Sequence[str]) -> str:
 def _serialization_helpers(operations: Sequence[Operation]) -> list[str]:
     helpers: set[str] = {"merge_headers", "set_header"}
     for operation in operations:
+        if _has_reserved_query(operation):
+            helpers.add("append_query")
         if operation.security:
             helpers.add("apply_security")
         for parameter in operation.parameters:
@@ -743,9 +745,13 @@ def _render_multipart_body(body: Body, indent: str) -> list[str]:
 def _render_request_arguments(operation: Operation) -> list[str]:
     arguments = [
         f"method=HttpMethods.{operation.method.name}",
-        'url=f"{self._base_url}{path}"',
+        (
+            'url=append_query(f"{self._base_url}{path}", query)'
+            if _has_reserved_query(operation)
+            else 'url=f"{self._base_url}{path}"'
+        ),
     ]
-    if _needs_query(operation):
+    if _needs_query(operation) and not _has_reserved_query(operation):
         arguments.append("params=tuple(query)")
     arguments.append(
         "headers=headers" if _needs_headers(operation) else "headers=self._headers"
@@ -973,6 +979,10 @@ def _uses_body_sentinel(operation: Operation) -> bool:
     return not operation.body_required and any(
         body.kind == "json" for body in _operation_bodies(operation)
     )
+
+
+def _has_reserved_query(operation: Operation) -> bool:
+    return any(parameter.allow_reserved for parameter in query_parameters(operation))
 
 
 _SERIALIZERS = {

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 040 — Serialize allowReserved query values
+
+- Accept the reserved-query helper option and construct affected request URLs without HTTPX re-escaping the expanded values.
+- Preserve query-safe reserved characters and encoded triples while escaping query delimiters, plus signs, and unsafe characters.
+- Added raw HTTPX URL checks covering optional values, ordinary escaping, repeated arrays, and API-key query authentication; regenerated the preview.
+
 ### Ticket 039 — Enforce required keys without property schemas
 
 - Generate presence validators for undeclared/inherited required keys without inventing value types or bypassing additional-property validation.

@@ -624,6 +624,11 @@ pagination, and a synchronous client.
 
 ## Development
 
+Query `allowReserved: true` preserves `:/?@!$'()*,;` and valid percent-encoded
+triples in values. It escapes `[]#&=+`, stray percent signs, and other disallowed
+characters to preserve query boundaries and form decoding. Parameter names,
+ordinary parameters, and query API keys retain normal escaping.
+
 Regeneration removes obsolete modules carrying the generator header inside the
 output package; `--check` reports them without changing files. Handwritten files
 and unmanaged `__init__.py`/`py.typed` files are preserved. Linked output paths
