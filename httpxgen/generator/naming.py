@@ -27,6 +27,44 @@ def field_identifier(value: str) -> str:
     return result
 
 
+def argument_identifier(value: str) -> str:
+    result = identifier(value)
+    if result in _OPERATION_LOCALS:
+        result += "_arg"
+    return result
+
+
+_OPERATION_LOCALS = {
+    "path",
+    "params",
+    "query",
+    "headers",
+    "cookies",
+    "files",
+    "form_data",
+    "body_data",
+    "body_arguments",
+    "json_body",
+    "response",
+    "detail",
+    "error",
+    "validation_error",
+    "response_content_type",
+    "response_stack",
+    "response_context",
+    "binary_stream",
+    "stream",
+    "item",
+    "scalar",
+    "apply_security",
+    "serialize_path",
+    "serialize_query",
+    "serialize_simple",
+    "serialize_json_body",
+    "upload_file_part",
+}
+
+
 def enum_member(value: str) -> str:
     result = re.sub(r"\W+", "_", value).strip("_").upper() or "EMPTY"
     return f"VALUE_{result}" if result[0].isdigit() else result

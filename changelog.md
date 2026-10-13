@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Ticket 004 — Avoid operation argument/local collisions
+
+- Disambiguate API parameter and multipart argument names that collide with generated locals or serialization helpers using an `_arg` suffix, preserving wire names.
+- Added a real HTTPX regression covering path, header, cookie, query, helper names, and a multipart `files` array.
+
 ### Ticket 003 — Distinguish JSON null bodies from omission
 
 - Required and explicit optional root null bodies send literal `null` with the selected JSON Content-Type.

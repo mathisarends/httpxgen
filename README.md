@@ -308,7 +308,9 @@ An `application/octet-stream` body accepts `bytes`, `Iterable[bytes]`, or
 `AsyncIterable[bytes]` and is passed directly as `content=`.
 
 Multipart fields are flattened into method arguments. Binary arrays become
-repeated parts with the same wire name, while `UploadFile` carries optional
+repeated parts with the same wire name. Parameter and multipart argument names
+that collide with generated locals (such as `path`, `headers`, or `files`) gain
+an `_arg` suffix; their wire names are preserved. `UploadFile` carries optional
 per-part metadata without reading an open file eagerly:
 
 ```python

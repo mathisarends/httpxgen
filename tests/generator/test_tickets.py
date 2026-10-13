@@ -169,3 +169,70 @@ def test_003_root_null_body(tmp_path, required, variants, media):
             seen, _ = invoke(package, lambda client: client.create_item(**kwargs))
             assert seen[0].content == b""
             assert "Content-Type" not in seen[0].headers
+
+
+def test_004_arguments_do_not_overwrite_generated_locals(tmp_path):
+    paths = {
+        "/files/{path}": {
+            "post": {
+                "operationId": "uploadFiles",
+                "parameters": [
+                    {
+                        "name": name,
+                        "in": location,
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                    for name, location in [
+                        ("path", "path"),
+                        ("headers", "header"),
+                        ("cookies", "cookie"),
+                        ("params", "query"),
+                        ("query", "query"),
+                        ("body_arguments", "query"),
+                        ("serialize_query", "query"),
+                        ("scalar", "query"),
+                    ]
+                ],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["files"],
+                                "properties": {
+                                    "files": {
+                                        "type": "array",
+                                        "items": {"type": "string", "format": "binary"},
+                                    }
+                                },
+                            }
+                        }
+                    },
+                },
+                "responses": {"204": {}},
+            }
+        }
+    }
+    with generated(tmp_path, paths) as package:
+        seen, _ = invoke(
+            package,
+            lambda client: client.upload_files(
+                path_arg="abc",
+                headers_arg="header-value",
+                cookies_arg="cookie-value",
+                params_arg="params",
+                query_arg="query",
+                body_arguments_arg="body",
+                serialize_query_arg="serializer",
+                scalar_arg="scalar",
+                files_arg=[b"upload-content"],
+            ),
+        )
+        assert seen[0].url.raw_path.startswith(b"/files/abc?")
+        assert seen[0].headers["headers"] == "header-value"
+        assert seen[0].headers["Cookie"] == "cookies=cookie-value"
+        assert seen[0].url.params["body_arguments"] == "body"
+        assert seen[0].url.params["serialize_query"] == "serializer"
+        assert b"upload-content" in seen[0].content
