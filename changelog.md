@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Ticket 018 — Use Python field names for discriminators
+
+- Configure Pydantic discriminators with the same normalized Python field names used by variant models, retaining original wire aliases.
+- Added request/response regressions for camelCase, punctuation, keywords, protected names, and ordinary discriminator properties.
+
 ### Ticket 017 — Share discriminator enum dependencies
 
 - Include generated discriminator-enum dependencies in workspace model ownership and promote dependencies to shared modules when needed.
