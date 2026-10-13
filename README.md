@@ -287,6 +287,10 @@ For `application/merge-patch+json`, all unset model fields are omitted, includin
 schema defaults. Explicit values equal to a default are still sent. Ordinary
 JSON create requests continue to include non-null defaults.
 
+Omit an optional JSON body by leaving out `body`. Passing `body=None` sends the
+literal JSON payload `null` when the schema permits null, with the selected JSON
+Content-Type. Omission uses a separate generated sentinel.
+
 ```python
     async def create_charge(
         self,

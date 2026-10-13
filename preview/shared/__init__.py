@@ -12,6 +12,8 @@ from .exceptions import (
 )
 from .http_methods import HttpMethods
 from .serialization import (
+    UNSET,
+    UnsetType,
     Credential,
     SecurityScheme,
     apply_security,
@@ -33,6 +35,8 @@ from .transport import (
 )
 
 __all__ = [
+    "UNSET",
+    "UnsetType",
     "ApiError",
     "AsyncHttpClient",
     "BinaryContent",

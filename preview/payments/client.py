@@ -144,9 +144,13 @@ class PaymentsClient:
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-            json_body = serialize_json_body(
+            body_arguments: dict[str, Any] = {}
+            body_arguments["json"] = serialize_json_body(
                 body, CreateChargeRequest
             )
+            if body_arguments["json"] is None:
+                body_arguments = {"content": b"null"}
+            headers.setdefault("Content-Type", "application/json")
 
         except ClientError:
             raise
@@ -158,7 +162,7 @@ class PaymentsClient:
                 method=HttpMethods.POST,
                 url=f"{self._base_url}{path}",
                 headers=headers,
-                json=json_body,
+                **body_arguments,
                 timeout=self._timeout if timeout is None else timeout,
             )
         except ClientError:
@@ -257,9 +261,13 @@ class PaymentsClient:
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-            json_body = serialize_json_body(
+            body_arguments: dict[str, Any] = {}
+            body_arguments["json"] = serialize_json_body(
                 body, CustomerProfileRequest
             )
+            if body_arguments["json"] is None:
+                body_arguments = {"content": b"null"}
+            headers.setdefault("Content-Type", "application/json")
 
         except ClientError:
             raise
@@ -271,7 +279,7 @@ class PaymentsClient:
                 method=HttpMethods.POST,
                 url=f"{self._base_url}{path}",
                 headers=headers,
-                json=json_body,
+                **body_arguments,
                 timeout=self._timeout if timeout is None else timeout,
             )
         except ClientError:
@@ -409,6 +417,9 @@ class PaymentsClient:
                 body_arguments["json"] = serialize_json_body(
                     body, CustomerProfileRequest
                 )
+                if body_arguments["json"] is None:
+                    body_arguments = {"content": b"null"}
+                headers.setdefault("Content-Type", "application/json")
             elif content_type == "text/plain":
                 body_arguments["content"] = body
                 headers.setdefault("Content-Type", "text/plain")
@@ -562,9 +573,13 @@ class PaymentsClient:
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-            json_body = serialize_json_body(
+            body_arguments: dict[str, Any] = {}
+            body_arguments["json"] = serialize_json_body(
                 body, PaymentMethod
             )
+            if body_arguments["json"] is None:
+                body_arguments = {"content": b"null"}
+            headers.setdefault("Content-Type", "application/json")
 
         except ClientError:
             raise
@@ -576,7 +591,7 @@ class PaymentsClient:
                 method=HttpMethods.POST,
                 url=f"{self._base_url}{path}",
                 headers=headers,
-                json=json_body,
+                **body_arguments,
                 timeout=self._timeout if timeout is None else timeout,
             )
         except ClientError:
@@ -611,9 +626,13 @@ class PaymentsClient:
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-            json_body = serialize_json_body(
+            body_arguments: dict[str, Any] = {}
+            body_arguments["json"] = serialize_json_body(
                 body, PaymentMethodReference
             )
+            if body_arguments["json"] is None:
+                body_arguments = {"content": b"null"}
+            headers.setdefault("Content-Type", "application/json")
 
         except ClientError:
             raise
@@ -625,7 +644,7 @@ class PaymentsClient:
                 method=HttpMethods.POST,
                 url=f"{self._base_url}{path}",
                 headers=headers,
-                json=json_body,
+                **body_arguments,
                 timeout=self._timeout if timeout is None else timeout,
             )
         except ClientError:

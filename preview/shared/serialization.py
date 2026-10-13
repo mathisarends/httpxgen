@@ -16,6 +16,13 @@ type Credential = str | tuple[str, str]
 _RESERVED_CHARACTERS = ":/?#[]@!$&'()*+,;="
 
 
+class UnsetType:
+    pass
+
+
+UNSET = UnsetType()
+
+
 def serialize_json_body(value: Any, annotation: Any, *, partial: bool = False) -> Any:
     return TypeAdapter(annotation).dump_python(
         value, mode="json", by_alias=True, exclude=_unset_null_fields(value),

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 003 — Distinguish JSON null bodies from omission
+
+- Required and explicit optional root null bodies send literal `null` with the selected JSON Content-Type.
+- Optional JSON body arguments use a separate omission sentinel; leaving out the argument sends no body.
+- Covered required/optional bodies and JSON media variants with real HTTPX requests; regenerated the preview.
+
 ### Ticket 002 — Omit unset defaults from JSON Merge Patch
 
 - Merge patches serialize only explicitly supplied fields, recursively and by alias; explicit default values and null deletion instructions remain present.

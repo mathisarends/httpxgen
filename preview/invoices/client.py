@@ -4,7 +4,7 @@
 
 
 from collections.abc import Mapping
-from typing import Self
+from typing import Any, Self
 from uuid import UUID
 
 from pydantic import TypeAdapter
@@ -130,9 +130,13 @@ class InvoicesClient:
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-            json_body = serialize_json_body(
+            body_arguments: dict[str, Any] = {}
+            body_arguments["json"] = serialize_json_body(
                 body, CreateInvoiceRequest
             )
+            if body_arguments["json"] is None:
+                body_arguments = {"content": b"null"}
+            headers.setdefault("Content-Type", "application/json")
 
         except ClientError:
             raise
@@ -144,7 +148,7 @@ class InvoicesClient:
                 method=HttpMethods.POST,
                 url=f"{self._base_url}{path}",
                 headers=headers,
-                json=json_body,
+                **body_arguments,
                 timeout=self._timeout if timeout is None else timeout,
             )
         except ClientError:

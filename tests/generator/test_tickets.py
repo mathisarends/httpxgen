@@ -142,3 +142,30 @@ def test_002_merge_patch_preserves_explicit_defaults(tmp_path):
             "enabled": True,
             "nested": {"display-name": "unchanged"},
         }
+
+
+@pytest.mark.parametrize("required", [True, False])
+@pytest.mark.parametrize("variants", [True, False])
+@pytest.mark.parametrize("media", ["application/json", "application/merge-patch+json"])
+def test_003_root_null_body(tmp_path, required, variants, media):
+    content = {media: {"schema": {"type": ["string", "null"]}}}
+    if variants:
+        content["text/plain"] = {"schema": {"type": "string"}}
+    paths = {
+        "/item": {
+            "post": {
+                "operationId": "createItem",
+                "requestBody": {"required": required, "content": content},
+                "responses": {"204": {}},
+            }
+        }
+    }
+    with generated(tmp_path, paths) as package:
+        kwargs = {"content_type": media} if variants else {}
+        seen, _ = invoke(package, lambda client: client.create_item(None, **kwargs))
+        assert seen[0].content == b"null"
+        assert seen[0].headers["Content-Type"] == media
+        if not required:
+            seen, _ = invoke(package, lambda client: client.create_item(**kwargs))
+            assert seen[0].content == b""
+            assert "Content-Type" not in seen[0].headers
