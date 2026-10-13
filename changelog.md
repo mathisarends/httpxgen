@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Ticket 019 — Reserve all generated client method names
+
+- Reject operations that collide with constructors, lifecycle methods, or generated streaming companions before writing output.
+- Added constructor and normalized companion-name collision regressions.
+
 ### Ticket 018 — Use Python field names for discriminators
 
 - Configure Pydantic discriminators with the same normalized Python field names used by variant models, retaining original wire aliases.

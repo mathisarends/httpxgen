@@ -541,6 +541,10 @@ client-check:
 
 ## Supported scope
 
+Operation names that collide with generated lifecycle methods or streaming
+companions fail generation before writing files; rename the conflicting
+`operationId` in the specification.
+
 Local Path Item references are resolved before schema normalization and tag
 selection. Authored siblings replace the corresponding inherited fields;
 omitted siblings preserve inherited parameters and operations. Cycles fail
