@@ -22,6 +22,8 @@ _RESERVED_NAMES = {
     "BaseModel",
     "ConfigDict",
     "ClassVar",
+    "Self",
+    "model_validator",
     "Field",
     "HttpMethods",
     "HttpResponse",

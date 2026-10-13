@@ -208,7 +208,7 @@ def _render_model_imports(
     if "json." in body:
         lines.append("import json")
     datetime_names = used_names(body, ("date", "datetime"))
-    typing_names = used_names(body, ("Annotated", "Any", "ClassVar", "Literal"))
+    typing_names = used_names(body, ("Annotated", "Any", "ClassVar", "Literal", "Self"))
     pydantic_names = used_names(
         body,
         (
@@ -218,6 +218,7 @@ def _render_model_imports(
             "Field",
             "TypeAdapter",
             "ValidationError",
+            "model_validator",
         ),
     )
     if datetime_names:
@@ -456,6 +457,22 @@ def _render_component(
         fields.append(
             "__pydantic_extra__: dict[str, "
             f"{schema_type(additional, schemas)}] = Field(init=False)"
+        )
+    if required_keys := sorted(required - properties.keys()):
+        fields.append(
+            '@model_validator(mode="after")\n'
+            f"    def _httpxgen_required_{component_class_name}(self) -> Self:\n"
+            "        present = set(self.model_extra or {})\n"
+            "        present.update(\n"
+            "            self.__class__.model_fields[key].alias or key\n"
+            "            for key in self.model_fields_set\n"
+            "            if key in self.__class__.model_fields\n"
+            "        )\n"
+            f"        missing = set({required_keys!r}) - present\n"
+            "        if missing:\n"
+            '            raise ValueError("missing required keys: "\n'
+            "                             + str(sorted(missing)))\n"
+            "        return self"
         )
     return render_template(
         TemplateName.MODEL,
