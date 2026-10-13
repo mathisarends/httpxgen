@@ -38,11 +38,13 @@ from preview.shared import (
     UploadInput,
     apply_security,
     binary_content,
+    merge_headers,
     scalar,
     serialize_form_body,
     serialize_json_body,
     serialize_path,
     serialize_query,
+    set_header,
     upload_file_part,
 )
 from preview.shared.models import ApiErrorModel
@@ -60,7 +62,7 @@ class PaymentsClient:
     ) -> None:
         self._client = http_client
         self._base_url = base_url.rstrip("/")
-        self._headers = dict(headers) if headers else {}
+        self._headers = merge_headers(headers)
         self._credentials = dict(credentials) if credentials else {}
         self._timeout = timeout
 
@@ -97,7 +99,7 @@ class PaymentsClient:
             query.extend(serialize_query("page_size", params.page_size))
 
             headers = dict(self._headers)
-            headers.setdefault("Accept", "application/json")
+            set_header(headers, "Accept", "application/json", default=True)
 
             apply_security(self._credentials, [("bearerAuth",)], headers, query, {})
 
@@ -142,7 +144,7 @@ class PaymentsClient:
             path = "/charges"
 
             headers = dict(self._headers)
-            headers.setdefault("Accept", "application/json")
+            set_header(headers, "Accept", "application/json", default=True)
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
@@ -152,7 +154,7 @@ class PaymentsClient:
             )
             if body_arguments["json"] is None:
                 body_arguments = {"content": b"null"}
-            headers.setdefault("Content-Type", "application/json")
+            set_header(headers, "Content-Type", "application/json", default=True)
 
         except ClientError:
             raise
@@ -215,7 +217,7 @@ class PaymentsClient:
             path = path.replace("{chargeId}", serialize_path("chargeId", charge_id))
 
             headers = dict(self._headers)
-            headers.setdefault("Accept", "application/json")
+            set_header(headers, "Accept", "application/json", default=True)
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
@@ -259,7 +261,7 @@ class PaymentsClient:
             path = "/customer-profiles"
 
             headers = dict(self._headers)
-            headers.setdefault("Accept", "application/json")
+            set_header(headers, "Accept", "application/json", default=True)
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
@@ -269,7 +271,7 @@ class PaymentsClient:
             )
             if body_arguments["json"] is None:
                 body_arguments = {"content": b"null"}
-            headers.setdefault("Content-Type", "application/json")
+            set_header(headers, "Content-Type", "application/json", default=True)
 
         except ClientError:
             raise
@@ -312,7 +314,7 @@ class PaymentsClient:
             path = "/customer-profiles/archive"
 
             headers = dict(self._headers)
-            headers.setdefault("Content-Type", "application/octet-stream")
+            set_header(headers, "Content-Type", "application/octet-stream", default=True)
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
@@ -410,7 +412,7 @@ class PaymentsClient:
             path = "/customer-profiles/convert"
 
             headers = dict(self._headers)
-            headers.setdefault("Accept", "application/json, text/plain")
+            set_header(headers, "Accept", "application/json, text/plain", default=True)
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
@@ -426,10 +428,10 @@ class PaymentsClient:
                 )
                 if body_arguments["json"] is None:
                     body_arguments = {"content": b"null"}
-                headers.setdefault("Content-Type", "application/json")
+                set_header(headers, "Content-Type", "application/json", default=True)
             elif content_type == "text/plain":
                 body_arguments["content"] = body
-                headers.setdefault("Content-Type", "text/plain")
+                set_header(headers, "Content-Type", "text/plain", default=True)
 
         except ClientError:
             raise
@@ -485,7 +487,7 @@ class PaymentsClient:
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-            headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
+            set_header(headers, "Content-Type", "application/x-www-form-urlencoded", default=True)
             form_data = serialize_form_body(
                 body, ImportCustomerProfileBody, {'display_name': {'style': 'form', 'explode': True, 'json': False}, 'email': {'style': 'form', 'explode': True, 'json': False}}
             )
@@ -532,7 +534,7 @@ class PaymentsClient:
             path = path.replace("{customerId}", serialize_path("customerId", customer_id))
 
             headers = dict(self._headers)
-            headers.setdefault("Accept", "application/json")
+            set_header(headers, "Accept", "application/json", default=True)
 
         except ClientError:
             raise
@@ -577,7 +579,7 @@ class PaymentsClient:
             path = "/payment-methods"
 
             headers = dict(self._headers)
-            headers.setdefault("Accept", "application/json")
+            set_header(headers, "Accept", "application/json", default=True)
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
@@ -587,7 +589,7 @@ class PaymentsClient:
             )
             if body_arguments["json"] is None:
                 body_arguments = {"content": b"null"}
-            headers.setdefault("Content-Type", "application/json")
+            set_header(headers, "Content-Type", "application/json", default=True)
 
         except ClientError:
             raise
@@ -630,7 +632,7 @@ class PaymentsClient:
             path = "/payment-methods/lookup"
 
             headers = dict(self._headers)
-            headers.setdefault("Accept", "application/json")
+            set_header(headers, "Accept", "application/json", default=True)
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
@@ -640,7 +642,7 @@ class PaymentsClient:
             )
             if body_arguments["json"] is None:
                 body_arguments = {"content": b"null"}
-            headers.setdefault("Content-Type", "application/json")
+            set_header(headers, "Content-Type", "application/json", default=True)
 
         except ClientError:
             raise

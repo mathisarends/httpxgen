@@ -16,6 +16,59 @@ from httpxgen.generator.normalize import normalize_inline_schemas
 from httpxgen.selection import filter_operations_by_tags
 
 
+def test_033_headers_merge_without_case_duplicates(tmp_path):
+    paths = {
+        "/item": {
+            "post": {
+                "operationId": "createItem",
+                "security": [{"bearer": []}],
+                "parameters": [
+                    {
+                        "name": "X-Value",
+                        "in": "header",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                "requestBody": {
+                    "required": True,
+                    "content": {"application/json": {"schema": {"type": "integer"}}},
+                },
+                "responses": {
+                    "200": {
+                        "content": {"application/json": {"schema": {"type": "integer"}}}
+                    }
+                },
+            }
+        }
+    }
+    components = {"securitySchemes": {"bearer": {"type": "http", "scheme": "bearer"}}}
+    headers = {
+        "accept": "first",
+        "ACCEPT": "configured",
+        "content-type": "application/custom+json",
+        "authorization": "old",
+        "X-Value": "old",
+        "x-VALUE": "last",
+    }
+    with generated(tmp_path, paths, components=components) as package:
+        seen, _ = invoke(
+            package,
+            lambda client: client.create_item(x__value="parameter", body=1),
+            lambda _: httpx.Response(200, json=1),
+            headers=headers,
+            credentials={"bearer": "secret"},
+        )
+        for name, value in {
+            "accept": "configured",
+            "content-type": "application/custom+json",
+            "authorization": "Bearer secret",
+            "x-value": "parameter",
+        }.items():
+            assert seen[0].headers.get_list(name) == [value]
+        assert headers["authorization"] == "old"
+
+
 def test_032_required_defaults_do_not_supply_missing_fields(tmp_path):
     shape = {
         "type": "object",
@@ -1535,7 +1588,14 @@ def generated(
                 del sys.modules[name]
 
 
-def invoke(package, action, handler=None, headers=None, client_name="TicketApiClient"):
+def invoke(
+    package,
+    action,
+    handler=None,
+    headers=None,
+    client_name="TicketApiClient",
+    credentials=None,
+):
     seen = []
 
     def capture(request):
@@ -1547,7 +1607,10 @@ def invoke(package, action, handler=None, headers=None, client_name="TicketApiCl
             transport=httpx.MockTransport(capture)
         ) as transport:
             client = getattr(package, client_name)(
-                transport, "https://example.test", headers=headers
+                transport,
+                "https://example.test",
+                headers=headers,
+                credentials=credentials,
             )
             return await action(client)
 

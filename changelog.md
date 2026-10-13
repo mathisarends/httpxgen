@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 033 — Merge headers case-insensitively
+
+- Deduplicate configured headers and use case-insensitive defaults/replacements for media headers, operation parameters, and credentials.
+- Document precedence: configured values override defaults, operation parameters override configuration, and credentials override both.
+- Added real HTTPX header multiplicity/precedence regressions; regenerated the preview.
+
 ### Ticket 032 — Allow required properties with default annotations
 
 - Permit required/default combinations while retaining presence validation; preserve the default as JSON Schema metadata rather than an automatic model fallback.

@@ -92,7 +92,7 @@ def test_render_client_renders_parameters_and_response_branches():
     )
     assert 'url=f"{self._base_url}{path}"' in source
     assert 'query.extend(serialize_query("status", params.status))' in source
-    assert 'headers["trace-id"] = serialize_simple(trace_id)' in source
+    assert 'set_header(headers, "trace-id", serialize_simple(trace_id))' in source
     assert "if response.status_code == 200:" in source
     assert "return Charge.model_validate(response.json())" in source
     assert "if response.status_code == 204:" in source

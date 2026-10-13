@@ -217,7 +217,7 @@ def _render_import(prefix: str, names: Sequence[str]) -> str:
 
 
 def _serialization_helpers(operations: Sequence[Operation]) -> list[str]:
-    helpers: set[str] = set()
+    helpers: set[str] = {"merge_headers", "set_header"}
     for operation in operations:
         if operation.security:
             helpers.add("apply_security")
@@ -498,12 +498,17 @@ def _render_headers(operation: Operation) -> str:
     lines = [f"{_INDENT}headers = dict(self._headers)\n"]
     if accepted:
         lines.append(
-            _wrap(f'headers.setdefault("Accept", {string_literal(accepted)})', _INDENT)
+            _wrap(
+                f'set_header(headers, "Accept", '
+                f"{string_literal(accepted)}, default=True)",
+                _INDENT,
+            )
         )
     if content_type:
         lines.append(
             _wrap(
-                f'headers.setdefault("Content-Type", {string_literal(content_type)})',
+                f'set_header(headers, "Content-Type", '
+                f"{string_literal(content_type)}, default=True)",
                 _INDENT,
             )
         )
@@ -511,8 +516,8 @@ def _render_headers(operation: Operation) -> str:
         lines.append(
             _guarded(
                 parameter,
-                f"headers[{string_literal(parameter.wire_name)}] = "
-                f"{_serialize_call(parameter, parameter.name)}",
+                f"set_header(headers, {string_literal(parameter.wire_name)}, "
+                f"{_serialize_call(parameter, parameter.name)})",
             )
         )
     return "".join(lines)
@@ -644,8 +649,8 @@ def _render_body_variant(body: Body, indent: str) -> list[str]:
         lines = [f'{indent}body_arguments["content"] = {value}\n']
     if _body_needs_content_type(body):
         lines.append(
-            f'{indent}headers.setdefault("Content-Type", '
-            f"{string_literal(body.media_type)})\n"
+            f'{indent}set_header(headers, "Content-Type", '
+            f"{string_literal(body.media_type)}, default=True)\n"
         )
     return lines
 
@@ -658,8 +663,8 @@ def _render_required_body(body: Body) -> list[str]:
         ]
     if body.kind == "form":
         return [
-            f'{_INDENT}headers.setdefault("Content-Type", '
-            f"{string_literal(body.media_type)})\n",
+            f'{_INDENT}set_header(headers, "Content-Type", '
+            f"{string_literal(body.media_type)}, default=True)\n",
             f"{_INDENT}form_data = serialize_form_body(\n",
             f"{_INDENT}    body, {body.annotation}, {dict(body.form_encodings)!r}\n",
             f"{_INDENT})\n",
