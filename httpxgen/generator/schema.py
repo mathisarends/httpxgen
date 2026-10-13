@@ -3,6 +3,7 @@ from typing import Any
 
 from httpxgen.generator.errors import GenerationError
 from httpxgen.generator.naming import class_name, string_literal
+from httpxgen.references import reference_values
 
 
 def schema_type(
@@ -218,16 +219,8 @@ def _json_equal(left: Any, right: Any) -> bool:
 
 
 def schema_dependencies(value: Any) -> set[str]:
-    if isinstance(value, Mapping):
-        dependencies = set()
-        if isinstance((reference := value.get("$ref")), str):
-            dependencies.add(reference.rsplit("/", 1)[-1])
-        for nested in value.values():
-            dependencies.update(schema_dependencies(nested))
-        return dependencies
-    if isinstance(value, list):
-        dependencies = set()
-        for nested in value:
-            dependencies.update(schema_dependencies(nested))
-        return dependencies
-    return set()
+    return {
+        reference.rsplit("/", 1)[-1].replace("~1", "/").replace("~0", "~")
+        for reference in reference_values(value, "schema", mappings=True)
+        if reference.startswith("#/components/schemas/")
+    }

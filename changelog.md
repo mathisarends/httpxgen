@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 031 — Treat data $ref keys as data
+
+- Share an OpenAPI-context walker for reference validation, rewriting, dependency analysis, and version-specific normalization.
+- Preserve literal defaults, examples, enum/const values, and example payloads; real references and discriminator mappings retain validation/canonicalization.
+- Added 3.0/3.1 and tag-selection runtime regressions, genuine property-name/reference checks, and invalid-reference rejection.
+
 ### Ticket 030 — Emit recursive type aliases safely
 
 - Detect self/mutual schema cycles and emit lazy Python 3.12+ aliases for recursive nonobject types while preserving ordinary aliases and object models.
