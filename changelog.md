@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 030 — Emit recursive type aliases safely
+
+- Detect self/mutual schema cycles and emit lazy Python 3.12+ aliases for recursive nonobject types while preserving ordinary aliases and object models.
+- Reject unsupported recursive exact-oneOf aliases during generation.
+- Added imported runtime validation for recursive arrays/unions and mutual aliases.
+
 ### Ticket 029 — Make transport protocols statically compatible
 
 - Use read-only response properties, accurate async context-manager exit types, and explicit supported request/stream arguments compatible with HTTPX.

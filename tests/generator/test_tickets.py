@@ -15,6 +15,109 @@ from httpxgen.generator import GenerationError
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize(
+    "schemas",
+    [
+        {
+            "Node": {
+                "oneOf": [{"type": "string"}, {"$ref": "#/components/schemas/Node"}]
+            }
+        },
+        {
+            "Node": {"$ref": "#/components/schemas/Other"},
+            "Other": {"$ref": "#/components/schemas/Node"},
+        },
+    ],
+)
+def test_030_unsupported_recursive_aliases_fail_before_writes(tmp_path, schemas):
+    with (
+        pytest.raises(GenerationError, match="recursive"),
+        generated(tmp_path, {}, schemas),
+    ):
+        pass
+    assert not (tmp_path / "ticket_api").exists()
+
+
+@pytest.mark.parametrize(
+    "schemas,value",
+    [
+        (
+            {"Node": {"type": "array", "items": {"$ref": "#/components/schemas/Node"}}},
+            [[[]]],
+        ),
+        (
+            {
+                "Node": {
+                    "anyOf": [
+                        {"type": "string"},
+                        {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/Node"},
+                        },
+                    ]
+                }
+            },
+            ["leaf", ["nested"]],
+        ),
+        (
+            {
+                "Node": {
+                    "anyOf": [
+                        {"type": "string"},
+                        {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/Other"},
+                        },
+                    ]
+                },
+                "Other": {
+                    "anyOf": [
+                        {"type": "integer"},
+                        {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/Node"},
+                        },
+                    ]
+                },
+            },
+            [1, ["leaf"]],
+        ),
+    ],
+)
+def test_030_recursive_aliases_import_and_validate_finite_values(
+    tmp_path, schemas, value
+):
+    paths = {
+        "/item": {
+            "get": {
+                "operationId": "getItem",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Node"}
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    }
+    with generated(tmp_path, paths, schemas) as package:
+        _, result = invoke(
+            package,
+            lambda client: client.get_item(),
+            lambda _: httpx.Response(200, json=value),
+        )
+        assert result == value
+        with pytest.raises(package.ResponseValidationError):
+            invoke(
+                package,
+                lambda client: client.get_item(),
+                lambda _: httpx.Response(200, json={"invalid": "object"}),
+            )
+
+
 @pytest.mark.parametrize("streaming", [False, True])
 def test_028_binary_response_headers_are_typed_and_validated(tmp_path, streaming):
     paths = {

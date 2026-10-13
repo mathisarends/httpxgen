@@ -22,6 +22,7 @@ from httpxgen.generator.operations import (
 from httpxgen.generator.schema import (
     is_object,
     ordered_schemas,
+    recursive_schema_names,
     schema_type,
     split_all_of,
 )
@@ -59,19 +60,38 @@ def render_models(
             + ", ".join(conflicts)
         )
     discriminator_enums_by_field, enums_by_union = _discriminator_enums(schemas)
+    recursive = recursive_schema_names(schemas)
+
+    def component(name: str) -> str:
+        block = _render_component(
+            name, schemas[name], discriminator_enums_by_field, schemas
+        )
+        if name in recursive and block.startswith(f"{class_name(name)} = "):
+            cursor = name
+            seen = set()
+            while cursor not in seen and "$ref" in schemas.get(cursor, {}):
+                seen.add(cursor)
+                cursor = schemas[cursor]["$ref"].rsplit("/", 1)[-1]
+                cursor = cursor.replace("~1", "/").replace("~0", "~")
+            if cursor in seen:
+                raise GenerationError(
+                    f"{name}: recursive reference-only aliases have no finite values"
+                )
+            if schemas[name].get("oneOf") and not schemas[name].get("discriminator"):
+                raise GenerationError(
+                    f"{name}: recursive oneOf aliases are unsupported; "
+                    "use an object model or anyOf"
+                )
+            block = f"type {block}"
+        return block
+
     blocks = [
         *(
             _render_discriminator_enum(enum)
             for union, enum in enums_by_union.items()
             if union in defined
         ),
-        *(
-            _render_component(
-                name, schemas[name], discriminator_enums_by_field, schemas
-            )
-            for name in ordered_schemas(schemas)
-            if name in defined
-        ),
+        *(component(name) for name in ordered_schemas(schemas) if name in defined),
         *(
             _render_query_model(operation)
             for operation in operations
