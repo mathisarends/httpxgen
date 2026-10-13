@@ -14,6 +14,8 @@ from httpxgen.generator.operations import (
     SecurityScheme,
     query_model_name,
     query_parameters,
+    response_model_names,
+    stream_result_name,
 )
 from httpxgen.generator.schema import ordered_schemas
 from httpxgen.generator.templates import TemplateName, render_template
@@ -80,10 +82,9 @@ def render_client(
                 if query_parameters(operation)
             ),
             *(
-                response.result_annotation
+                name
                 for operation in operations
-                for response in operation.responses
-                if response.result_annotation is not None
+                for name in response_model_names(operation)
             ),
         ]
     )
@@ -345,9 +346,32 @@ def _render_operation(operation: Operation) -> str:
             for response in operation.responses
         ):
             nonbinary.append("None")
+        binary_names = [
+            stream_result_name(response) or "BinaryStream"
+            for response in operation.responses
+            if response.success
+            and any(
+                content.kind == "binary" for content in _response_contents(response)
+            )
+        ]
         context["stream_annotation"] = " | ".join(
-            dict.fromkeys(["BinaryStream", *nonbinary])
+            dict.fromkeys([*binary_names, *nonbinary])
         )
+        context["has_plain_binary"] = "BinaryStream" in binary_names
+        buffered_blocks = []
+        for response in operation.responses:
+            if name := stream_result_name(response):
+                buffered_blocks.append(
+                    f"            if isinstance(stream, {name}):\n"
+                    f"                return {response.result_annotation}(\n"
+                    '                    body=b"".join([\n'
+                    "                        chunk async for chunk in "
+                    "stream.body.iter_bytes()\n"
+                    "                    ]),\n"
+                    '                    **stream.model_dump(exclude={"body"}),\n'
+                    "                )\n"
+                )
+        context["buffered_stream_handling"] = "".join(buffered_blocks)
         context["response_handling"] = "".join(
             f"    {line}" if line.strip() else line
             for line in stream_handling.splitlines(keepends=True)
@@ -390,10 +414,14 @@ def _render_stream_response_handling(responses: Sequence[Response]) -> str:
                 f"            {keyword} response_content_type == {normalized}:\n"
             )
             if content.kind == "binary":
-                lines.append(
-                    "                stream_result = "
-                    "BinaryStream(response, response_content_type)\n"
+                expression = "BinaryStream(response, response_content_type)"
+                result = _response_result(
+                    response,
+                    expression,
+                    " " * 16,
+                    result_type=stream_result_name(response),
                 )
+                lines.append(f"                stream_result = {result}\n")
             else:
                 lines.append("                await response.aread()\n")
                 result = _response_result(
@@ -764,11 +792,13 @@ def _render_response_handling(responses: Sequence[Response]) -> str:
     return "".join(lines)
 
 
-def _response_result(response: Response, body: str, indent: str) -> str:
+def _response_result(
+    response: Response, body: str, indent: str, *, result_type: str | None = None
+) -> str:
     if response.result_annotation is None:
         return body
     nested = f"{indent}    "
-    lines = [f"{response.result_annotation}(", f"{nested}body={body},"]
+    lines = [f"{result_type or response.result_annotation}(", f"{nested}body={body},"]
     for header in response.headers:
         key = string_literal(header.wire_name)
         if header.annotation == "str":

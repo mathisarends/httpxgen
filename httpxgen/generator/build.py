@@ -61,7 +61,9 @@ def generate_client(
     return _finish(
         {
             "client.py": render_client(operations, schemas, client_name, layout),
-            "models.py": render_models(schemas, operations),
+            "models.py": render_models(
+                schemas, operations, transport_module=layout.transport
+            ),
             "exceptions.py": render_template(
                 TemplateName.EXCEPTIONS, transport_module=layout.transport
             ),
@@ -158,6 +160,7 @@ def generate_workspace(
             operations,
             defined=defined,
             external=[(f"{shared_module}.models", sorted(shared_names))],
+            transport_module=layout.transport,
         )
         files[f"{module}/__init__.py"] = render_client_package_init(client_name, models)
         clients.append((module, client_name))

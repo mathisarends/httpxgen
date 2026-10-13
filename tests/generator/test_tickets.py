@@ -15,6 +15,49 @@ from httpxgen.generator import GenerationError
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize("streaming", [False, True])
+def test_028_binary_response_headers_are_typed_and_validated(tmp_path, streaming):
+    paths = {
+        "/item": {
+            "get": {
+                "operationId": "getItem",
+                "responses": {
+                    "200": {
+                        "content": {"application/octet-stream": {}},
+                        "headers": {"X-Count": {"schema": {"type": "integer"}}},
+                    }
+                },
+            }
+        }
+    }
+    with generated(tmp_path, paths) as package:
+
+        async def action(client):
+            if not streaming:
+                return await client.get_item()
+            async with client.stream_get_item() as result:
+                assert isinstance(result, package.GetItemResult200Stream)
+                assert isinstance(result.body, package.BinaryStream)
+                data = b"".join([chunk async for chunk in result.body.iter_bytes()])
+                return package.GetItemResult200(body=data, x_count=result.x_count)
+
+        def response(count):
+            return httpx.Response(
+                200,
+                content=b"bytes",
+                headers={"Content-Type": "application/octet-stream", "X-Count": count},
+            )
+
+        _, result = invoke(package, action, lambda _: response("3"))
+        assert isinstance(result, package.GetItemResult200)
+        assert result.body == b"bytes"
+        assert result.x_count == 3
+        malformed = response("not-an-int")
+        with pytest.raises(package.ResponseValidationError):
+            invoke(package, action, lambda _: malformed)
+        assert malformed.is_closed
+
+
 @pytest.mark.parametrize("required", [False, True])
 @pytest.mark.parametrize("binary", [False, True])
 def test_027_invalid_media_choices_fail_before_transport(tmp_path, required, binary):

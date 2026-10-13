@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 028 — Preserve binary response header models
+
+- Buffered binary responses with declared headers return the ordinary typed result model; streaming variants yield a typed stream result with a `BinaryStream` body.
+- Reuse ordinary header extraction/validation before yielding and keep header-free binary methods unchanged and incremental.
+- Added valid/malformed binary-header runtime regressions and documented the result interfaces.
+
 ### Ticket 027 — Reject invalid request content_type choices
 
 - Validate media-selection values before body dispatch, including omitted optional bodies; report supplied and valid choices in `RequestValidationError` without sending a request.

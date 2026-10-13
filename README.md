@@ -347,6 +347,12 @@ For endpoints with mixed success representations, buffered methods return the
 declared bytes/model/text/None union. Streaming variants yield `BinaryStream`
 for binary content and the parsed value for JSON, text, or empty successes.
 
+Binary successes with declared headers return a typed result whose `body` is
+bytes and whose fields contain validated headers. Their streaming variants
+yield a corresponding `...Result...Stream` model with `body: BinaryStream` and
+the same header fields, validated before iteration. Endpoints without declared
+headers retain the direct bytes/`BinaryStream` API.
+
 ```python
 content = await client.download_recording(recording_id)
 
