@@ -13,6 +13,17 @@ from preview.shared.exceptions import ClientError, TransportError
 type BinaryContent = bytes | Iterable[bytes] | AsyncIterable[bytes]
 
 
+def binary_content(value: BinaryContent) -> bytes | AsyncIterable[bytes]:
+    if isinstance(value, (bytes, AsyncIterable)):
+        return value
+
+    async def chunks() -> AsyncIterator[bytes]:
+        for chunk in value:
+            yield chunk
+
+    return chunks()
+
+
 class HttpResponse(Protocol):
     status_code: int
     headers: Mapping[str, str]

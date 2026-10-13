@@ -24,6 +24,7 @@ from .serialization import (
     serialize_simple,
 )
 from .transport import (
+    binary_content,
     AsyncHttpClient,
     BinaryContent,
     BinaryStream,
@@ -35,6 +36,7 @@ from .transport import (
 )
 
 __all__ = [
+    "binary_content",
     "UNSET",
     "UnsetType",
     "ApiError",

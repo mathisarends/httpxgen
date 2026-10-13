@@ -10,6 +10,59 @@ import pytest
 from httpxgen import OpenAPISpec, write_client
 
 
+@pytest.mark.parametrize("backend", ["protocol", "httpx"])
+@pytest.mark.parametrize("optional", [False, True])
+def test_009_binary_iterables_are_lazy(tmp_path, backend, optional):
+    paths = {
+        "/upload": {
+            "post": {
+                "operationId": "upload",
+                "requestBody": {
+                    "required": not optional,
+                    "content": {"application/octet-stream": {}},
+                },
+                "responses": {"204": {}},
+            }
+        }
+    }
+    with generated(tmp_path, paths, http_client=backend) as package:
+        transport_module = importlib.import_module("ticket_api.transport")
+        consumed = []
+
+        def chunks():
+            for index in range(3):
+                consumed.append(index)
+                yield bytes([index])
+
+        adapted = transport_module.binary_content(chunks())
+        assert consumed == []
+
+        async def check_lazy():
+            iterator = adapted.__aiter__()
+            assert await anext(iterator) == b"\x00"
+            assert consumed == [0]
+            await iterator.aclose()
+
+        asyncio.run(check_lazy())
+        seen, _ = invoke(package, lambda client: client.upload(chunks()))
+        assert seen[0].content == b"\x00\x01\x02"
+
+        async def async_chunks():
+            yield b"async"
+
+        seen, _ = invoke(package, lambda client: client.upload(async_chunks()))
+        assert seen[0].content == b"async"
+        failure = ValueError("input generator failed")
+
+        def broken():
+            yield b"first"
+            raise failure
+
+        with pytest.raises(package.TransportError) as caught:
+            invoke(package, lambda client: client.upload(broken()))
+        assert caught.value.cause is failure
+
+
 @pytest.mark.parametrize("streaming", [False, True])
 def test_008_stream_read_failures_are_transport_errors(tmp_path, streaming):
     paths = {
@@ -122,7 +175,7 @@ def test_007_cancelled_stream_closes_response(tmp_path, status):
 
 
 @contextmanager
-def generated(tmp_path, paths, schemas=None, **spec_options):
+def generated(tmp_path, paths, schemas=None, *, http_client="protocol", **spec_options):
     spec = OpenAPISpec.model_validate(
         {
             "openapi": "3.1.0",
@@ -133,7 +186,10 @@ def generated(tmp_path, paths, schemas=None, **spec_options):
         }
     )
     write_client(
-        spec=spec, package_dir=tmp_path / "ticket_api", package_name="ticket_api"
+        spec=spec,
+        package_dir=tmp_path / "ticket_api",
+        package_name="ticket_api",
+        http_client=http_client,
     )
     sys.path.insert(0, str(tmp_path))
     try:

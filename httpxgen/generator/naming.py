@@ -54,6 +54,7 @@ _OPERATION_LOCALS = {
     "response_context",
     "binary_stream",
     "stream_result",
+    "binary_content",
     "stream",
     "item",
     "scalar",
