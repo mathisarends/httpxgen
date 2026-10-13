@@ -15,6 +15,73 @@ from httpxgen.generator import GenerationError
 from httpxgen.selection import filter_operations_by_tags
 
 
+def test_017_discriminator_enums_follow_shared_variants(tmp_path):
+    variants = {
+        name: {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {"kind": {"type": "string", "const": name.lower()}},
+        }
+        for name in ["A", "B", "C"]
+    }
+    variants["Choice"] = {
+        "oneOf": [{"$ref": f"#/components/schemas/{name}"} for name in ["A", "B"]],
+        "discriminator": {
+            "propertyName": "kind",
+            "mapping": {
+                name.lower(): f"#/components/schemas/{name}" for name in ["A", "B"]
+            },
+        },
+    }
+    variants["OtherChoice"] = {
+        "oneOf": [{"$ref": f"#/components/schemas/{name}"} for name in ["A", "C"]],
+        "discriminator": {
+            "propertyName": "kind",
+            "mapping": {
+                name.lower(): f"#/components/schemas/{name}" for name in ["A", "C"]
+            },
+        },
+    }
+    paths = {
+        f"/{tag}/{name}": {
+            "get": {
+                "operationId": f"get{name}",
+                "tags": [tag],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": f"#/components/schemas/{name}"}
+                            }
+                        }
+                    }
+                },
+            }
+        }
+        for tag, name in [("one", "Choice"), ("two", "A"), ("two", "OtherChoice")]
+    }
+    with generated(tmp_path, paths, variants, tags=["one", "two"]) as package:
+        from pydantic import TypeAdapter
+
+        assert isinstance(
+            TypeAdapter(package.Choice).validate_python({"kind": "a"}), package.A
+        )
+        assert isinstance(
+            TypeAdapter(package.OtherChoice).validate_python({"kind": "a"}), package.A
+        )
+        for client_name, method in [
+            ("OneClient", "get_choice"),
+            ("TwoClient", "get_a"),
+        ]:
+            _, result = invoke(
+                package,
+                lambda client, method=method: getattr(client, method)(),
+                lambda _: httpx.Response(200, json={"kind": "a"}),
+                client_name=client_name,
+            )
+            assert isinstance(result, package.A)
+
+
 @pytest.mark.parametrize("tags", [[], ["one"], ["one", "two"]])
 @pytest.mark.parametrize("override", [False, True])
 def test_016_referenced_path_items_retain_parameters_and_tags(tmp_path, tags, override):
