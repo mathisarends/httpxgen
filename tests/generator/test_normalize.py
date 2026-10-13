@@ -395,7 +395,7 @@ def test_discriminator_mapping_accepts_bare_schema_names():
     assert schemas["Dog"]["properties"]["kind"]["const"] == "dog"
 
 
-def test_required_property_may_not_also_declare_a_default():
+def test_required_property_default_is_an_annotation():
     schemas = {
         "Item": {
             "type": "object",
@@ -404,10 +404,8 @@ def test_required_property_may_not_also_declare_a_default():
         }
     }
 
-    with pytest.raises(GenerationError) as error:
-        normalize_inline_schemas(_schemas_spec(schemas))
-
-    assert "required and also declares a default" in str(error.value)
+    normalized = normalize_inline_schemas(_schemas_spec(schemas))
+    assert normalized.components.schemas["Item"]["properties"]["name"]["default"] == "x"
 
 
 def test_optional_property_defaults_stay_valid():

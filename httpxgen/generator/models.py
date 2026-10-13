@@ -499,12 +499,14 @@ def _render_field(
             field_args.append(f"{pydantic_name}={schema[openapi_name]!r}")
 
     default = schema.get("default", _MISSING)
-    if default is not _MISSING:
+    if required:
+        default_source = None
+        if default is not _MISSING:
+            field_args.append(f"json_schema_extra={{'default': {default!r}}}")
+    elif default is not _MISSING:
         default_source = _default_source(
             default, discriminator_enum, schema, schemas or {}
         )
-    elif required:
-        default_source = None
     else:
         default_source = "None"
     if not field_args:
