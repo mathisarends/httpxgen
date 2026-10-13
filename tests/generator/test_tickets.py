@@ -15,6 +15,70 @@ from httpxgen.generator import GenerationError
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize(
+    "wire,python_name",
+    [
+        ("kindType", "kind_type"),
+        ("type-name", "type_name"),
+        ("class", "class_"),
+        ("model_type", "model_type_"),
+        ("type", "type"),
+    ],
+)
+def test_018_discriminator_field_aliases(tmp_path, wire, python_name):
+    schemas = {
+        name: {
+            "type": "object",
+            "required": [wire],
+            "properties": {wire: {"type": "string", "const": name.lower()}},
+        }
+        for name in ["A", "B"]
+    }
+    schemas["Choice"] = {
+        "oneOf": [{"$ref": f"#/components/schemas/{name}"} for name in ["A", "B"]],
+        "discriminator": {
+            "propertyName": wire,
+            "mapping": {
+                name.lower(): f"#/components/schemas/{name}" for name in ["A", "B"]
+            },
+        },
+    }
+    paths = {
+        "/item": {
+            "post": {
+                "operationId": "createItem",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/Choice"}
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Choice"}
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    }
+    with generated(tmp_path, paths, schemas) as package:
+        body = package.A(**{python_name: "a"})
+        seen, result = invoke(
+            package,
+            lambda client: client.create_item(body),
+            lambda _: httpx.Response(200, json={wire: "b"}),
+        )
+        assert isinstance(result, package.B)
+        assert getattr(result, python_name) == "b"
+        assert json.loads(seen[0].content) == {wire: "a"}
+
+
 def test_017_discriminator_enums_follow_shared_variants(tmp_path):
     variants = {
         name: {

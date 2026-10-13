@@ -344,6 +344,7 @@ def _render_component(
         union = " | ".join(schema_type(item, schemas) for item in variants)
         discriminator = schema.get("discriminator", {}).get("propertyName")
         if discriminator:
+            discriminator = field_identifier(discriminator)
             rendered = (
                 f"{component_class_name} = Annotated[{union}, "
                 f"Field(discriminator={string_literal(discriminator)})]"
