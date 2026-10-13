@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 036 — Synchronize editable project lock metadata
+
+- Update the lockfile root version from 0.1.0 to 0.2.0 without changing dependencies.
+- Require locked dependency installation in CI so metadata drift fails visibly.
+- Verified a fresh locked environment installation and reviewed the one-line lockfile diff.
+
 ### Ticket 035 — Reconcile obsolete generated modules
 
 - Detect old generated modules after layout/tag changes in check mode and remove them during regeneration.
