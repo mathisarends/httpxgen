@@ -3,10 +3,18 @@ from typing import Any
 
 from httpxgen.generator.errors import GenerationError
 from httpxgen.generator.naming import class_name
+from httpxgen.generator.operations import resolve_path_item
 from httpxgen.openapi import HttpMethod, OpenAPISpec
 
 
 def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
+    spec = spec.model_copy(
+        update={
+            "paths": {
+                path: resolve_path_item(item, spec) for path, item in spec.paths.items()
+            }
+        }
+    )
     document = spec.model_dump(by_alias=True, exclude_none=True)
     if spec.openapi.startswith("3.0"):
         _strip_oas30_reference_siblings(document)

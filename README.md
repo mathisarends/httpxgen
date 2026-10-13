@@ -541,6 +541,11 @@ client-check:
 
 ## Supported scope
 
+Local Path Item references are resolved before schema normalization and tag
+selection. Authored siblings replace the corresponding inherited fields;
+omitted siblings preserve inherited parameters and operations. Cycles fail
+generation with a specific error.
+
 References to nullable object components accept null in response bodies, request
 arguments, and nested fields while keeping the object model's required fields
 and constraints. OpenAPI 3.0 `nullable` requires an explicit type.
