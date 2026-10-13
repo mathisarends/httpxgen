@@ -227,6 +227,8 @@ def _serialization_helpers(operations: Sequence[Operation]) -> list[str]:
                 helpers.add("serialize_json_part")
         if any(body.kind == "json" for body in _operation_bodies(operation)):
             helpers.add("serialize_json_body")
+        if any(body.kind == "form" for body in _operation_bodies(operation)):
+            helpers.add("serialize_form_body")
         if _uses_body_sentinel(operation):
             helpers.update({"UNSET", "UnsetType"})
     return sorted(helpers)
@@ -571,7 +573,11 @@ def _render_body_variant(body: Body, indent: str) -> list[str]:
             f"{indent})\n",
         ]
         if body.kind == "form":
-            lines.append(f'{indent}body_arguments["data"] = body_data\n')
+            lines = [
+                f'{indent}body_arguments["content"] = serialize_form_body(\n',
+                f"{indent}    body, {body.annotation}, {dict(body.form_encodings)!r}\n",
+                f"{indent})\n",
+            ]
         else:
             lines.extend(
                 [
@@ -609,8 +615,10 @@ def _render_required_body(body: Body) -> list[str]:
         ]
     if body.kind == "form":
         return [
-            f"{_INDENT}form_data = TypeAdapter({body.annotation}).dump_python(\n",
-            f'{_INDENT}    body, mode="python", by_alias=True, exclude_none=True\n',
+            f'{_INDENT}headers.setdefault("Content-Type", '
+            f"{string_literal(body.media_type)})\n",
+            f"{_INDENT}form_data = serialize_form_body(\n",
+            f"{_INDENT}    body, {body.annotation}, {dict(body.form_encodings)!r}\n",
             f"{_INDENT})\n",
         ]
     if body.kind == "multipart":
@@ -702,7 +710,7 @@ def _render_request_arguments(operation: Operation) -> list[str]:
         if len(bodies) > 1 or not body.required or body.kind == "json":
             arguments.append("**body_arguments")
         elif body.kind == "form":
-            arguments.append("data=form_data")
+            arguments.append("content=form_data")
         elif body.kind == "multipart":
             arguments.append("files=files")
         else:
@@ -908,7 +916,7 @@ def _operation_bodies(operation: Operation) -> tuple[Body, ...]:
 
 
 def _body_needs_content_type(body: Body) -> bool:
-    return body.kind in {"text", "binary", "json"}
+    return body.kind in {"text", "binary", "json", "form"}
 
 
 def _uses_body_sentinel(operation: Operation) -> bool:

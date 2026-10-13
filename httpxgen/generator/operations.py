@@ -62,6 +62,7 @@ class Body:
     kind: str = "json"
     binary_fields: tuple[str, ...] = ()
     multipart_fields: tuple[MultipartField, ...] = ()
+    form_encodings: tuple[tuple[str, dict[str, Any]], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -342,6 +343,111 @@ def _read_bodies(
             name = _reference_name(schema["$ref"], "schemas")
             shape = spec.components.schemas.get(name, schema)
         _, shape = split_all_of(shape)
+        form_encodings = ()
+        if kind == "form":
+            if not is_object(shape):
+                raise GenerationError(
+                    "URL-encoded form bodies require an object schema"
+                )
+            encodings = value.content[media_type].encoding
+            unknown = set(encodings) - set(shape.get("properties", {}))
+            if unknown:
+                raise GenerationError(
+                    f"form encoding names unknown properties: {sorted(unknown)}"
+                )
+            form_fields = []
+            for field_name, field_schema in shape.get("properties", {}).items():
+                encoding = encodings.get(field_name, {})
+                unsupported = set(encoding) - {
+                    "style",
+                    "explode",
+                    "contentType",
+                    "allowReserved",
+                }
+                if unsupported or encoding.get("allowReserved"):
+                    raise GenerationError(
+                        f"form field {field_name!r} uses unsupported encoding options"
+                    )
+                style = encoding.get("style", "form")
+                explode = encoding.get("explode", style == "form")
+                if style not in {
+                    "form",
+                    "spaceDelimited",
+                    "pipeDelimited",
+                    "deepObject",
+                } or (style != "form" and explode != (style == "deepObject")):
+                    raise GenerationError(
+                        f"form field {field_name!r} uses unsupported "
+                        "style/explode combination"
+                    )
+                content_type = encoding.get("contentType")
+                shape_field = field_schema
+                if "$ref" in shape_field:
+                    shape_field = spec.components.schemas.get(
+                        _reference_name(shape_field["$ref"], "schemas"), shape_field
+                    )
+                item_schema = shape_field.get("items", {})
+                if "$ref" in item_schema:
+                    item_schema = spec.components.schemas.get(
+                        _reference_name(item_schema["$ref"], "schemas"), item_schema
+                    )
+                structured = is_object(shape_field) or (
+                    shape_field.get("type") == "array" and is_object(item_schema)
+                )
+                uses_style = bool(set(encoding) & {"style", "explode", "allowReserved"})
+                if uses_style:
+                    invalid_shape = (
+                        (style == "deepObject" and not is_object(shape_field))
+                        or (
+                            style in {"spaceDelimited", "pipeDelimited"}
+                            and shape_field.get("type") != "array"
+                        )
+                        or (
+                            shape_field.get("type") == "array"
+                            and is_object(item_schema)
+                        )
+                    )
+                    for nested in shape_field.get("properties", {}).values():
+                        if "$ref" in nested:
+                            nested = spec.components.schemas.get(
+                                _reference_name(nested["$ref"], "schemas"), nested
+                            )
+                        invalid_shape |= (
+                            is_object(nested) or nested.get("type") == "array"
+                        )
+                    if invalid_shape:
+                        raise GenerationError(
+                            f"form field {field_name!r} requires JSON content encoding "
+                            "for nested values or a compatible style"
+                        )
+                json_content = not uses_style and (
+                    structured
+                    if content_type is None
+                    else bool(
+                        content_type
+                        and (
+                            content_type == "application/json"
+                            or content_type.endswith("+json")
+                        )
+                    )
+                )
+                if (
+                    not uses_style
+                    and content_type
+                    and (content_type != "text/plain" or structured)
+                    and not json_content
+                ):
+                    raise GenerationError(
+                        f"form field {field_name!r} has unsupported contentType "
+                        f"{content_type!r}"
+                    )
+                form_fields.append(
+                    (
+                        field_name,
+                        {"style": style, "explode": explode, "json": json_content},
+                    )
+                )
+            form_encodings = tuple(form_fields)
         required_fields = set(shape.get("required", ()))
         multipart_fields: list[MultipartField] = []
         encodings = value.content[media_type].encoding if kind == "multipart" else {}
@@ -417,6 +523,7 @@ def _read_bodies(
                 kind,
                 binary_fields,
                 tuple(multipart_fields),
+                form_encodings,
             )
         )
     return tuple(result)
