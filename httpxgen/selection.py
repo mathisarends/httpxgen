@@ -4,6 +4,7 @@ from typing import Any
 from httpxgen.generator.errors import GenerationError
 from httpxgen.openapi import (
     APIOperation,
+    Components,
     HttpMethod,
     OpenAPISpec,
     PathItem,
@@ -34,9 +35,9 @@ def filter_operations_by_tags(
 
     selected_paths = _paths_with_tags(spec, requested)
     schema_paths = _paths_with_tags(spec, (*requested, *schema_only))
-    schemas = _referenced_schemas(spec, schema_paths)
-    selected_paths, schemas = _canonicalize_schema_names(selected_paths, schemas)
-    components = spec.components.model_copy(deep=True, update={"schemas": schemas})
+    retained = _referenced_components(spec, schema_paths)
+    selected_paths, retained = _canonicalize_schema_names(selected_paths, retained)
+    components = Components.model_validate(retained)
     return spec.model_copy(
         deep=True,
         update={"components": components, "paths": selected_paths},
@@ -71,11 +72,12 @@ def _paths_with_tags(
     return selected
 
 
-def _referenced_schemas(
+def _referenced_components(
     spec: OpenAPISpec,
     paths: dict[str, PathItem],
-) -> dict[str, dict[str, Any]]:
-    referenced = _schema_references(
+) -> dict[str, Any]:
+    components = spec.components.model_dump(by_alias=True, exclude_none=True)
+    referenced = _component_references(
         {
             path: item.model_dump(by_alias=True, exclude_none=True)
             for path, item in paths.items()
@@ -83,41 +85,50 @@ def _referenced_schemas(
     )
     pending = list(referenced)
     while pending:
-        schema = spec.components.schemas.get(pending.pop())
-        if schema is None:
+        section, name = pending.pop()
+        component = components.get(section, {}).get(name)
+        if component is None:
             continue
-        for dependency in _schema_references(schema) - referenced:
+        for dependency in _component_references(component) - referenced:
             referenced.add(dependency)
             pending.append(dependency)
     return {
-        name: schema
-        for name, schema in spec.components.schemas.items()
-        if name in referenced
+        section: {
+            name: value
+            for name, value in values.items()
+            if section == "securitySchemes" or (section, name) in referenced
+        }
+        for section, values in components.items()
+        if isinstance(values, dict)
     }
 
 
-def _schema_references(value: Any) -> set[str]:
+def _component_references(value: Any) -> set[tuple[str, str]]:
     if isinstance(value, dict):
-        references: set[str] = set()
+        references: set[tuple[str, str]] = set()
+        reference = value.get("$ref")
+        if isinstance(reference, str) and reference.startswith("#/components/"):
+            parts = reference.split("/", 3)
+            if len(parts) == 4:
+                references.add(
+                    (parts[2], parts[3].replace("~1", "/").replace("~0", "~"))
+                )
         for item in value.values():
-            references.update(_schema_references(item))
+            references.update(_component_references(item))
         return references
     if isinstance(value, (list, tuple)):
         references = set()
         for item in value:
-            references.update(_schema_references(item))
+            references.update(_component_references(item))
         return references
-    prefix = "#/components/schemas/"
-    if isinstance(value, str) and value.startswith(prefix):
-        name = value.removeprefix(prefix)
-        return {name.replace("~1", "/").replace("~0", "~")}
     return set()
 
 
 def _canonicalize_schema_names(
     paths: dict[str, PathItem],
-    schemas: dict[str, dict[str, Any]],
-) -> tuple[dict[str, PathItem], dict[str, dict[str, Any]]]:
+    components: dict[str, Any],
+) -> tuple[dict[str, PathItem], dict[str, Any]]:
+    schemas = components.get("schemas", {})
     title_counts: dict[str, int] = {}
     for schema in schemas.values():
         if isinstance((title := schema.get("title")), str):
@@ -131,7 +142,7 @@ def _canonicalize_schema_names(
         and (title == name or title not in schemas)
     }
     if all(name == canonical for name, canonical in names.items()):
-        return paths, schemas
+        return paths, components
 
     rewritten_paths = {
         path: PathItem.model_validate(
@@ -145,7 +156,9 @@ def _canonicalize_schema_names(
         names.get(name, name): _rewrite_references(schema, names)
         for name, schema in schemas.items()
     }
-    return rewritten_paths, rewritten_schemas
+    rewritten_components = _rewrite_references(components, names)
+    rewritten_components["schemas"] = rewritten_schemas
+    return rewritten_paths, rewritten_components
 
 
 def _rewrite_references(value: Any, names: dict[str, str]) -> Any:

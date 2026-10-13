@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 015 — Follow reusable references during tag selection
+
+- Traverse the reusable component graph with cycle protection and retain the schemas, request bodies, responses, parameters, and headers needed by selected operations.
+- Prune unused reusable components and rewrite their references when canonicalizing schema titles.
+- Added imported single-tag/workspace regressions with recursive schemas and reusable request/response/header/parameter components.
+
 ### Ticket 014 — Import inline oneOf validation support
 
 - Import `Annotated` and the exact-oneOf helper wherever inline operation annotations are evaluated.
