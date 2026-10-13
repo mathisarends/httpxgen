@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 010 — Give upload file parts filenames
+
+- Bytes/default `UploadFile` inputs use a fallback filename; bare handles use their basename without eager reads.
+- Preserve explicit filenames, media types, and headers; explicit `filename=None` intentionally produces a filename-less part.
+- Added multipart-parser regressions for shorthand, metadata, and repeated files; regenerated the preview.
+
 ### Ticket 009 — Support synchronous binary upload iterables
 
 - Adapt synchronous binary iterables lazily to async-compatible chunks, preserving bytes and async iterables.

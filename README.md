@@ -316,6 +316,10 @@ that collide with generated locals (such as `path`, `headers`, or `files`) gain
 an `_arg` suffix; their wire names are preserved. `UploadFile` carries optional
 per-part metadata without reading an open file eagerly:
 
+Bytes and default `UploadFile` inputs use the filename `upload`; bare handles
+use their basename when available. Set `UploadFile(filename=None, ...)`
+explicitly to send a filename-less part.
+
 ```python
 await client.upload_documents(
     documents=[
