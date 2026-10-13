@@ -54,11 +54,30 @@ def test_generated_protocols_accept_httpx_without_casts(tmp_path, backend, concr
                         "responses": {
                             "200": {
                                 "content": {"application/octet-stream": {}},
+                                "headers": {
+                                    "X-Count": {"schema": {"type": "integer"}},
+                                    "X-Counts": {
+                                        "schema": {
+                                            "$ref": "#/components/schemas/Counts"
+                                        }
+                                    },
+                                },
+                            },
+                            "204": {
                                 "headers": {"X-Count": {"schema": {"type": "integer"}}},
-                            }
+                            },
                         },
                     }
                 },
+            },
+            "components": {
+                "schemas": {
+                    "Counts": {
+                        "type": "array",
+                        "minItems": 2,
+                        "items": {"type": "integer"},
+                    }
+                }
             },
         }
     )
@@ -70,11 +89,20 @@ def test_generated_protocols_accept_httpx_without_casts(tmp_path, backend, concr
     )
     consumer = tmp_path / "check.py"
     consumer.write_text(
+        "from typing import assert_type\n"
         f"import {backend} as httpx\n"
         "from typed_api import TypedApiClient, AsyncHttpClient, HttpResponse\n"
+        "from typed_api import (\n"
+        "    DownloadResult200, DownloadResult200Stream, DownloadResult204,\n"
+        ")\n"
         "transport: AsyncHttpClient = httpx.AsyncClient()\n"
         "response: HttpResponse = httpx.Response(200)\n"
         'client = TypedApiClient(httpx.AsyncClient(), "https://example.test")\n'
+        "async def check_responses() -> None:\n"
+        "    result = await client.download()\n"
+        "    assert_type(result, DownloadResult200 | DownloadResult204)\n"
+        "    async with client.stream_download() as streamed:\n"
+        "        assert_type(streamed, DownloadResult200Stream | DownloadResult204)\n"
     )
     result = subprocess.run(
         [sys.executable, "-m", "mypy", "--no-incremental", str(consumer)],

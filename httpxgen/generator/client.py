@@ -352,11 +352,11 @@ def _render_operation(operation: Operation) -> str:
             for content in _response_contents(response)
             if content.kind != "binary"
         ]
-        if any(
-            response.success and not _response_contents(response)
+        nonbinary.extend(
+            response.result_annotation or "None"
             for response in operation.responses
-        ):
-            nonbinary.append("None")
+            if response.success and not _response_contents(response)
+        )
         binary_names = [
             stream_result_name(response) or "BinaryStream"
             for response in operation.responses
@@ -408,7 +408,8 @@ def _render_stream_response_handling(responses: Sequence[Response]) -> str:
         lines.append(f"        {condition}:\n")
         contents = _response_contents(response)
         if not contents:
-            lines.append("            stream_result = None\n")
+            result = _response_result(response, "None", " " * 12)
+            lines.append(f"            stream_result = {result}\n")
             continue
         lines.append(
             "            response_content_type = "
@@ -825,7 +826,7 @@ def _response_result(
             lines.append(f"{nested}{header.name}=response.headers.get({key}),")
             continue
         value = f"response.headers[{key}]"
-        if header.annotation.startswith("list["):
+        if header.is_array:
             value += '.split(",")'
         lines.extend(
             [
