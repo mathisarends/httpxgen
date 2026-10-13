@@ -219,6 +219,12 @@ def _serialization_helpers(operations: Sequence[Operation]) -> list[str]:
             helpers.add(_SERIALIZERS[parameter.location])
         if any(body.kind == "multipart" for body in _operation_bodies(operation)):
             helpers.add("scalar")
+            if any(
+                field.json_annotation
+                for body in _operation_bodies(operation)
+                for field in body.multipart_fields
+            ):
+                helpers.add("serialize_json_part")
         if any(body.kind == "json" for body in _operation_bodies(operation)):
             helpers.add("serialize_json_body")
         if _uses_body_sentinel(operation):
@@ -630,23 +636,41 @@ def _render_multipart_body(body: Body, indent: str) -> list[str]:
             lines.append(f"{indent}if {field.name} is not None:\n")
             field_indent += "    "
         wire_name = string_literal(field.wire_name)
+        metadata = (
+            f", content_type={string_literal(field.content_type)}"
+            if field.content_type
+            else ""
+        )
+        json_type = field.json_annotation
+        part_type = string_literal(field.content_type) if field.content_type else "None"
+
+        def part(
+            value: str, json_type: str | None = json_type, part_type: str = part_type
+        ) -> str:
+            encoded = (
+                f"serialize_json_part({value}, {json_type})"
+                if json_type
+                else f"scalar({value})"
+            )
+            return f"(None, {encoded}, {part_type}, {{}})"
+
         if field.is_file and field.is_array:
             lines.append(
                 f"{field_indent}files.extend(\n"
-                f"{field_indent}    ({wire_name}, upload_file_part(item))\n"
+                f"{field_indent}    ({wire_name}, upload_file_part(item{metadata}))\n"
                 f"{field_indent}    for item in {field.name}\n"
                 f"{field_indent})\n"
             )
         elif field.is_file:
             lines.append(
                 f"{field_indent}files.append("
-                f"({wire_name}, upload_file_part({field.name})))\n"
+                f"({wire_name}, upload_file_part({field.name}{metadata})))\n"
             )
         elif field.is_array:
             lines.append(
                 f"{field_indent}files.extend(\n"
                 f"{field_indent}    ("
-                f"{wire_name}, (None, scalar(item), None, {{}}))\n"
+                f"{wire_name}, {part('item')})\n"
                 f"{field_indent}    for item in {field.name}\n"
                 f"{field_indent})\n"
             )
@@ -654,7 +678,7 @@ def _render_multipart_body(body: Body, indent: str) -> list[str]:
             lines.append(
                 f"{field_indent}files.append((\n"
                 f"{field_indent}    {wire_name},\n"
-                f"{field_indent}    (None, scalar({field.name}), None, {{}}),\n"
+                f"{field_indent}    {part(field.name)},\n"
                 f"{field_indent}))\n"
             )
     return lines

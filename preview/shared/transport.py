@@ -75,15 +75,16 @@ type FilePart = tuple[
 ]
 
 
-def upload_file_part(value: UploadInput) -> FilePart:
+def upload_file_part(value: UploadInput, *, content_type: str | None = None) -> FilePart:
     if isinstance(value, UploadFile):
-        return value.filename, value.content, value.content_type, value.headers or {}
+        return (value.filename, value.content, value.content_type or content_type,
+                value.headers or {})
     name = getattr(value, "name", None)
     filename = (
         name.replace("\\", "/").rsplit("/", 1)[-1]
         if isinstance(name, str) else "upload"
     )
-    return filename or "upload", value, None, {}
+    return filename or "upload", value, content_type, {}
 
 
 class BinaryStream:

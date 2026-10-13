@@ -541,6 +541,11 @@ client-check:
 
 ## Supported scope
 
+Multipart object fields and object-array items are JSON parts with aliases and
+the declared `encoding.contentType` (JSON/+json), or application/json by default.
+File parts also honor `encoding.contentType`. Unsupported multipart encoding
+options fail generation explicitly.
+
 Dot-valued path identifiers (`.` and `..`) are percent-encoded to preserve the
 route boundary instead of allowing URL dot-segment normalization.
 

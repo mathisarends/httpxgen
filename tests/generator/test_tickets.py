@@ -10,6 +10,80 @@ import httpx
 import pytest
 
 from httpxgen import OpenAPISpec, write_client
+from httpxgen.generator import GenerationError
+
+
+@pytest.mark.parametrize("encoding", [{}, {"contentType": "application/custom+json"}])
+def test_011_multipart_objects_are_json(tmp_path, encoding):
+    media = {
+        "schema": {
+            "type": "object",
+            "required": ["metadata", "records", "tag"],
+            "properties": {
+                "metadata": {"$ref": "#/components/schemas/Meta"},
+                "records": {
+                    "type": "array",
+                    "items": {"$ref": "#/components/schemas/Meta"},
+                },
+                "tag": {"type": "string"},
+            },
+        },
+        "encoding": {"metadata": encoding},
+    }
+    paths = {
+        "/upload": {
+            "post": {
+                "operationId": "upload",
+                "requestBody": {
+                    "required": True,
+                    "content": {"multipart/form-data": media},
+                },
+                "responses": {"204": {}},
+            }
+        }
+    }
+    schemas = {
+        "Meta": {
+            "type": "object",
+            "required": ["display-name"],
+            "properties": {"display-name": {"type": ["string", "null"]}},
+        }
+    }
+    with generated(tmp_path, paths, schemas) as package:
+        meta = package.Meta.model_validate({"display-name": None})
+        seen, _ = invoke(
+            package,
+            lambda client: client.upload(
+                metadata=meta, records=[meta, meta], tag="plain"
+            ),
+        )
+        mime_header = (
+            f"Content-Type: {seen[0].headers['Content-Type']}\r\n\r\n".encode()
+        )
+        message = BytesParser(policy=policy.default).parsebytes(
+            mime_header + seen[0].content
+        )
+        parts = list(message.iter_parts())
+        assert len(parts) == 4
+        for index in range(3):
+            assert json.loads(parts[index].get_payload(decode=True)) == {
+                "display-name": None
+            }
+            expected = (
+                encoding.get("contentType", "application/json")
+                if index == 0
+                else "application/json"
+            )
+            assert parts[index].get_content_type() == expected
+        assert parts[-1].get_payload(decode=True) == b"plain"
+
+    media["encoding"]["metadata"] = {"style": "form"}
+    with (
+        pytest.raises(GenerationError, match="unsupported encoding"),
+        generated(tmp_path / "unsupported", paths, schemas),
+    ):
+        pass
+    assert not (tmp_path / "unsupported" / "ticket_api").exists()
 
 
 @pytest.mark.parametrize("kind", ["bytes", "handle", "default", "metadata", "none"])

@@ -22,6 +22,7 @@ class OpenAPIModel(BaseModel):
 
 class MediaType(OpenAPIModel):
     schema_: dict[str, Any] | None = Field(default=None, alias="schema")
+    encoding: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class RequestBody(OpenAPIModel):
