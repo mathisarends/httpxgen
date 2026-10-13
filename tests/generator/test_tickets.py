@@ -12,6 +12,82 @@ import pytest
 
 from httpxgen import OpenAPISpec, write_client
 from httpxgen.generator import GenerationError
+from httpxgen.selection import filter_operations_by_tags
+
+
+@pytest.mark.parametrize("tags", [["one"], ["one", "two"]])
+def test_015_tag_selection_follows_reusable_components(tmp_path, tags):
+    components = {
+        "schemas": {
+            "RawThing": {
+                "title": "Thing",
+                "type": "object",
+                "required": ["id"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "next": {"$ref": "#/components/schemas/RawThing"},
+                },
+            },
+            "Unused": {"type": "string"},
+        },
+        "parameters": {
+            "Limit": {"name": "limit", "in": "query", "schema": {"type": "integer"}}
+        },
+        "headers": {"Count": {"schema": {"type": "integer"}}},
+        "requestBodies": {
+            "Input": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/RawThing"}
+                    }
+                },
+            }
+        },
+        "responses": {
+            "Ok": {
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/RawThing"}
+                    }
+                },
+                "headers": {"X-Count": {"$ref": "#/components/headers/Count"}},
+            },
+            "Unused": {
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/Unused"}
+                    }
+                }
+            },
+        },
+    }
+    paths = {
+        f"/{tag}": {
+            "post": {
+                "operationId": f"create{tag.title()}",
+                "tags": [tag],
+                "parameters": [{"$ref": "#/components/parameters/Limit"}],
+                "requestBody": {"$ref": "#/components/requestBodies/Input"},
+                "responses": {"200": {"$ref": "#/components/responses/Ok"}},
+            }
+        }
+        for tag in ["one", "two"]
+    }
+    with generated(tmp_path, paths, tags=tags, components=components) as package:
+        client_name = "TicketApiClient" if len(tags) == 1 else "OneClient"
+        seen, result = invoke(
+            package,
+            lambda client: client.create_one(body=package.Thing(id="request"), limit=2),
+            lambda _: httpx.Response(
+                200, json={"id": "response"}, headers={"X-Count": "3"}
+            ),
+            client_name=client_name,
+        )
+        assert result.body.id == "response"
+        assert result.x_count == 3
+        assert json.loads(seen[0].content) == {"id": "request"}
+        assert not hasattr(package, "Unused")
 
 
 @pytest.mark.parametrize("value", ["word", 7])
@@ -515,7 +591,9 @@ def test_007_cancelled_stream_closes_response(tmp_path, status):
 
 
 @contextmanager
-def generated(tmp_path, paths, schemas=None, *, http_client="protocol", **spec_options):
+def generated(
+    tmp_path, paths, schemas=None, *, http_client="protocol", tags=(), **spec_options
+):
     spec = OpenAPISpec.model_validate(
         {
             "openapi": "3.1.0",
@@ -525,11 +603,14 @@ def generated(tmp_path, paths, schemas=None, *, http_client="protocol", **spec_o
             **spec_options,
         }
     )
+    if len(tags) == 1:
+        spec = filter_operations_by_tags(spec, tags)
     write_client(
         spec=spec,
         package_dir=tmp_path / "ticket_api",
         package_name="ticket_api",
         http_client=http_client,
+        tags=tags,
     )
     sys.path.insert(0, str(tmp_path))
     try:
@@ -541,7 +622,7 @@ def generated(tmp_path, paths, schemas=None, *, http_client="protocol", **spec_o
                 del sys.modules[name]
 
 
-def invoke(package, action, handler=None, headers=None):
+def invoke(package, action, handler=None, headers=None, client_name="TicketApiClient"):
     seen = []
 
     def capture(request):
@@ -552,7 +633,7 @@ def invoke(package, action, handler=None, headers=None):
         async with httpx.AsyncClient(
             transport=httpx.MockTransport(capture)
         ) as transport:
-            client = package.TicketApiClient(
+            client = getattr(package, client_name)(
                 transport, "https://example.test", headers=headers
             )
             return await action(client)
