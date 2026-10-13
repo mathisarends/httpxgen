@@ -15,6 +15,43 @@ from httpxgen.generator import GenerationError
 from httpxgen.selection import filter_operations_by_tags
 
 
+def test_020_content_type_control_argument_is_reserved_for_variants(tmp_path):
+    content = {
+        "application/json": {"schema": {"type": "string"}},
+        "text/plain": {"schema": {"type": "string"}},
+    }
+    paths = {
+        "/item": {
+            "post": {
+                "operationId": "createItem",
+                "parameters": [
+                    {
+                        "name": "content_type",
+                        "in": "query",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                "requestBody": {"required": True, "content": content},
+                "responses": {"204": {}},
+            }
+        }
+    }
+    with (
+        pytest.raises(GenerationError, match="generated content_type"),
+        generated(tmp_path, paths),
+    ):
+        pass
+    assert not (tmp_path / "ticket_api").exists()
+    del content["text/plain"]
+    with generated(tmp_path, paths) as package:
+        seen, _ = invoke(
+            package,
+            lambda client: client.create_item(content_type="wire", body="value"),
+        )
+        assert seen[0].url.params["content_type"] == "wire"
+
+
 @pytest.mark.parametrize("name", ["__init__", "stream_download", "streamDownload"])
 def test_019_generated_method_collisions_fail_before_writes(tmp_path, name):
     paths = {"/other": {"get": {"operationId": name, "responses": {"204": {}}}}}
