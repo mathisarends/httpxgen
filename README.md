@@ -279,7 +279,9 @@ Path parameters carry their spec format — `format: uuid` becomes `UUID`, not `
         raise ApiError(response.status_code, response.text, response=response)
 ```
 
-Request bodies are a single typed `body` argument, serialized by alias and without `None` noise:
+Request bodies are a single typed `body` argument, serialized by alias.
+Explicitly supplied nullable fields are sent as JSON null; unset nullable fields
+are omitted, including inside nested models:
 
 ```python
     async def create_charge(
@@ -289,9 +291,7 @@ Request bodies are a single typed `body` argument, serialized by alias and witho
         timeout: float | None = None,
     ) -> Charge:
         ...
-        json_body = TypeAdapter(CreateChargeRequest).dump_python(
-            body, mode="json", by_alias=True, exclude_none=True
-        )
+        json_body = serialize_json_body(body, CreateChargeRequest)
         ...
 ```
 

@@ -38,6 +38,7 @@ from preview.shared import (
     UploadInput,
     apply_security,
     scalar,
+    serialize_json_body,
     serialize_path,
     serialize_query,
     upload_file_part,
@@ -143,8 +144,8 @@ class PaymentsClient:
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-            json_body = TypeAdapter(CreateChargeRequest).dump_python(
-                body, mode="json", by_alias=True, exclude_none=True
+            json_body = serialize_json_body(
+                body, CreateChargeRequest
             )
 
         except ClientError:
@@ -256,8 +257,8 @@ class PaymentsClient:
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-            json_body = TypeAdapter(CustomerProfileRequest).dump_python(
-                body, mode="json", by_alias=True, exclude_none=True
+            json_body = serialize_json_body(
+                body, CustomerProfileRequest
             )
 
         except ClientError:
@@ -405,8 +406,8 @@ class PaymentsClient:
 
             body_arguments: dict[str, Any] = {}
             if content_type == "application/json":
-                body_arguments["json"] = TypeAdapter(CustomerProfileRequest).dump_python(
-                    body, mode="json", by_alias=True, exclude_none=True
+                body_arguments["json"] = serialize_json_body(
+                    body, CustomerProfileRequest
                 )
             elif content_type == "text/plain":
                 body_arguments["content"] = body
@@ -561,8 +562,8 @@ class PaymentsClient:
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-            json_body = TypeAdapter(PaymentMethod).dump_python(
-                body, mode="json", by_alias=True, exclude_none=True
+            json_body = serialize_json_body(
+                body, PaymentMethod
             )
 
         except ClientError:
@@ -610,8 +611,8 @@ class PaymentsClient:
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-            json_body = TypeAdapter(PaymentMethodReference).dump_python(
-                body, mode="json", by_alias=True, exclude_none=True
+            json_body = serialize_json_body(
+                body, PaymentMethodReference
             )
 
         except ClientError:

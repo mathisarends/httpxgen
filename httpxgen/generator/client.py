@@ -215,6 +215,8 @@ def _serialization_helpers(operations: Sequence[Operation]) -> list[str]:
             helpers.add(_SERIALIZERS[parameter.location])
         if any(body.kind == "multipart" for body in _operation_bodies(operation)):
             helpers.add("scalar")
+        if any(body.kind == "json" for body in _operation_bodies(operation)):
+            helpers.add("serialize_json_body")
     return sorted(helpers)
 
 
@@ -519,9 +521,8 @@ def _render_body(operation: Operation) -> str:
 def _render_body_variant(body: Body, indent: str) -> list[str]:
     if body.kind == "json":
         lines = [
-            f'{indent}body_arguments["json"] = TypeAdapter(',
-            f"{body.annotation}).dump_python(\n",
-            f'{indent}    body, mode="json", by_alias=True, exclude_none=True\n',
+            f'{indent}body_arguments["json"] = serialize_json_body(\n',
+            f"{indent}    body, {body.annotation}\n",
             f"{indent})\n",
         ]
     elif body.kind in {"form", "multipart"}:
@@ -563,8 +564,8 @@ def _render_body_variant(body: Body, indent: str) -> list[str]:
 def _render_required_body(body: Body) -> list[str]:
     if body.kind == "json":
         return [
-            f"{_INDENT}json_body = TypeAdapter({body.annotation}).dump_python(\n",
-            f'{_INDENT}    body, mode="json", by_alias=True, exclude_none=True\n',
+            f"{_INDENT}json_body = serialize_json_body(\n",
+            f"{_INDENT}    body, {body.annotation}\n",
             f"{_INDENT})\n",
         ]
     if body.kind == "form":
