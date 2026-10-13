@@ -5,10 +5,11 @@
 
 from base64 import b64encode
 import json
+import re
 from collections.abc import Mapping, Sequence
 from enum import Enum
 from typing import Any, NamedTuple
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, quote_plus, urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel, RootModel, TypeAdapter
 
@@ -155,7 +156,34 @@ def serialize_simple(value: Any, *, explode: bool = False) -> str:
 
 
 def serialize_query(
-    name: str, value: Any, style: str = "form", *, explode: bool = True
+    name: str, value: Any, style: str = "form", *, explode: bool = True,
+    allow_reserved: bool = False,
+) -> list[tuple[str, str]]:
+    pairs = _query_pairs(name, value, style, explode=explode)
+    return [(key, _ReservedQueryValue(item) if allow_reserved else item) for key, item in pairs]
+
+
+class _ReservedQueryValue(str):
+    pass
+
+
+def append_query(url: str, pairs: Sequence[tuple[str, str]]) -> str:
+    def encoded(value: str) -> str:
+        if not isinstance(value, _ReservedQueryValue):
+            return quote_plus(value, safe="")
+        return "".join(
+            part if re.fullmatch(r"%[0-9A-Fa-f]{2}", part)
+            else quote(part, safe=":/?@!$'()*,;")
+            for part in re.split(r"(%[0-9A-Fa-f]{2})", value)
+        )
+
+    query = "&".join(f"{quote_plus(name, safe='')}={encoded(value)}" for name, value in pairs)
+    parts = urlsplit(url)
+    return urlunsplit(parts._replace(query="&".join(item for item in (parts.query, query) if item)))
+
+
+def _query_pairs(
+    name: str, value: Any, style: str, *, explode: bool
 ) -> list[tuple[str, str]]:
     value = _plain(value)
     if style == "deepObject" and isinstance(value, Mapping):

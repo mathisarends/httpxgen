@@ -74,6 +74,7 @@ _OPERATION_LOCALS = {
     "item",
     "scalar",
     "apply_security",
+    "append_query",
     "serialize_path",
     "serialize_query",
     "serialize_simple",

@@ -16,6 +16,58 @@ from httpxgen.generator.normalize import normalize_inline_schemas
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize("required", [False, True])
+def test_040_reserved_query_values_reach_the_raw_url(tmp_path, required):
+    parameters = [
+        {
+            "name": "q",
+            "in": "query",
+            "required": required,
+            "allowReserved": True,
+            "schema": {"type": "string"},
+        },
+        {"name": "plain", "in": "query", "schema": {"type": "string"}},
+        {
+            "name": "tags",
+            "in": "query",
+            "schema": {"type": "array", "items": {"type": "string"}},
+        },
+    ]
+    paths = {
+        "/run": {
+            "get": {
+                "operationId": "run",
+                "parameters": parameters,
+                "security": [{"key": []}],
+                "responses": {"204": {}},
+            }
+        }
+    }
+    security = {
+        "securitySchemes": {"key": {"type": "apiKey", "in": "query", "name": "api_key"}}
+    }
+    with generated(tmp_path, paths, components=security) as package:
+        requests, _ = invoke(
+            package,
+            lambda client: client.run(
+                "a/b:?@!$'()*,;[]#&=+ %2F%zz", plain="a/b +", tags=["a/b", "c+d"]
+            ),
+            credentials={"key": "x/y&z"},
+        )
+        assert (
+            requests[0].url.query == b"q=a/b:?@!$'()*,;%5B%5D%23%26%3D%2B%20%2F%25zz"
+            b"&plain=a%2Fb+%2B&tags=a%2Fb&tags=c%2Bd&api_key=x%2Fy%26z"
+        )
+        assert requests[0].url.fragment == ""
+        assert requests[0].url.params.get_list("tags") == ["a/b", "c+d"]
+        assert requests[0].url.params["api_key"] == "x/y&z"
+        if not required:
+            requests, _ = invoke(
+                package, lambda client: client.run(), credentials={"key": "x/y"}
+            )
+            assert requests[0].url.query == b"api_key=x%2Fy"
+
+
 @pytest.mark.parametrize("composition", [False, True])
 @pytest.mark.parametrize("directional", [False, True])
 def test_039_undeclared_required_keys_validate_requests_and_responses(
