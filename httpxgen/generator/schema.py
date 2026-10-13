@@ -73,7 +73,7 @@ def ordered_schemas(schemas: Mapping[str, Any]) -> list[str]:
         if name in visited or name in visiting:
             return
         visiting.add(name)
-        for dependency in sorted(_dependencies(schemas[name])):
+        for dependency in sorted(schema_dependencies(schemas[name])):
             if dependency in schemas:
                 visit(dependency)
         visiting.remove(name)
@@ -149,17 +149,17 @@ def _literal(value: Any) -> str:
     return string_literal(value) if isinstance(value, str) else repr(value)
 
 
-def _dependencies(value: Any) -> set[str]:
+def schema_dependencies(value: Any) -> set[str]:
     if isinstance(value, Mapping):
         dependencies = set()
         if isinstance((reference := value.get("$ref")), str):
             dependencies.add(reference.rsplit("/", 1)[-1])
         for nested in value.values():
-            dependencies.update(_dependencies(nested))
+            dependencies.update(schema_dependencies(nested))
         return dependencies
     if isinstance(value, list):
         dependencies = set()
         for nested in value:
-            dependencies.update(_dependencies(nested))
+            dependencies.update(schema_dependencies(nested))
         return dependencies
     return set()

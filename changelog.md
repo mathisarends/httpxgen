@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 017 — Share discriminator enum dependencies
+
+- Include generated discriminator-enum dependencies in workspace model ownership and promote dependencies to shared modules when needed.
+- Choose discriminator enum dependencies deterministically for variants participating in multiple unions.
+- Added shared/direct/multiple-union runtime regressions without manual model rebuilding.
+
 ### Ticket 016 — Resolve Path Item references before selection
 
 - Resolve local Path Item chains before normalization/tag selection, preserving inherited parameters when no override was authored.

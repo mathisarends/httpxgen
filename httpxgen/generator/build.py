@@ -4,7 +4,11 @@ from typing import Literal
 
 from httpxgen.generator.client import Layout, render_client, render_serialization
 from httpxgen.generator.errors import GenerationError
-from httpxgen.generator.models import exported_model_names, render_models
+from httpxgen.generator.models import (
+    discriminator_dependencies,
+    exported_model_names,
+    render_models,
+)
 from httpxgen.generator.naming import class_name, identifier
 from httpxgen.generator.normalize import normalize_inline_schemas
 from httpxgen.generator.operations import (
@@ -19,6 +23,7 @@ from httpxgen.generator.package import (
     validate_package_names,
     validate_workspace_names,
 )
+from httpxgen.generator.schema import schema_dependencies
 from httpxgen.generator.templates import (
     GENERATED_HEADER,
     TemplateName,
@@ -168,13 +173,28 @@ def _schema_owners(spec: OpenAPISpec, tags: Sequence[str]) -> dict[str, str | No
         for tag in tags
     }
     counts = Counter(name for names in reachable.values() for name in names)
-    return {
+    owners = {
         name: next(
             (tag for tag in tags if counts[name] == 1 and name in reachable[tag]),
             None,
         )
         for name in spec.components.schemas
     }
+    generated = discriminator_dependencies(spec.components.schemas)
+    changed = True
+    while changed:
+        changed = False
+        for name, schema in spec.components.schemas.items():
+            dependencies = schema_dependencies(schema) | generated.get(name, set())
+            for dependency in dependencies:
+                if (
+                    dependency in owners
+                    and owners[dependency] is not None
+                    and owners[dependency] != owners[name]
+                ):
+                    owners[dependency] = None
+                    changed = True
+    return owners
 
 
 def _only(

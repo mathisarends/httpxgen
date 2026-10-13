@@ -40,14 +40,14 @@ def _one_of(*variants: Any) -> BeforeValidator:
     return BeforeValidator(validate)
 
 
-class PaymentMethodType(StrEnum):
-    CARD = "card"
-    BANK_TRANSFER = "bank_transfer"
-
-
 class ChargeEventType(StrEnum):
     CHARGE_CREATED = "charge.created"
     CHARGE_REFUNDED = "charge.refunded"
+
+
+class PaymentMethodType(StrEnum):
+    CARD = "card"
+    BANK_TRANSFER = "bank_transfer"
 
 
 class Address(BaseModel):

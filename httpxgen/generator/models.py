@@ -102,6 +102,15 @@ def exported_model_names(schemas: Mapping[str, Any]) -> list[str]:
     return [name for name, _ in exported_model_sources(schemas)]
 
 
+def discriminator_dependencies(schemas: Mapping[str, Any]) -> dict[str, set[str]]:
+    fields, unions = _discriminator_enums(schemas)
+    enum_sources = {enum.name: union for union, enum in unions.items()}
+    dependencies: dict[str, set[str]] = {}
+    for (component, _), enum in fields.items():
+        dependencies.setdefault(component, set()).add(enum_sources[enum.name])
+    return dependencies
+
+
 def exported_model_sources(schemas: Mapping[str, Any]) -> list[tuple[str, str]]:
     """Pair every exported model name with the schema construct that defines it."""
     discriminators: dict[str, str] = {}
@@ -205,7 +214,7 @@ def _discriminator_enums(
 ) -> tuple[dict[tuple[str, str], _DiscriminatorEnum], dict[str, _DiscriminatorEnum]]:
     result: dict[tuple[str, str], _DiscriminatorEnum] = {}
     by_union: dict[str, _DiscriminatorEnum] = {}
-    for union_name, union_schema in schemas.items():
+    for union_name, union_schema in sorted(schemas.items()):
         variants = union_schema.get("oneOf") or union_schema.get("anyOf")
         property_name = union_schema.get("discriminator", {}).get("propertyName")
         if not variants or not property_name:
@@ -230,7 +239,7 @@ def _discriminator_enums(
                 continue
             component_name = reference.rsplit("/", 1)[-1]
             if _discriminator_values(schemas, variant, property_name):
-                result[(component_name, property_name)] = enum
+                result.setdefault((component_name, property_name), enum)
     return result, by_union
 
 
