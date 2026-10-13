@@ -602,6 +602,11 @@ options fail generation explicitly.
 Dot-valued path identifiers (`.` and `..`) are percent-encoded to preserve the
 route boundary instead of allowing URL dot-segment normalization.
 
+Path `simple`, `label`, and `matrix` styles support scalar, flat array, and flat
+object values with their style-specific explode delimiters. Data is escaped
+before joining it, including literal commas, label dots, slashes, and percent
+signs. `allowReserved` applies only to query parameters.
+
 httpxgen targets ordinary OpenAPI 3.0 and 3.1 client specifications, not every
 JSON Schema feature. It supports JSON/YAML input, local component references,
 path/query/header/cookie serialization, JSON/form/multipart/binary request

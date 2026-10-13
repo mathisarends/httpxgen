@@ -328,6 +328,10 @@ def _validate_parameters(
         "cookie": {"form"},
     }
     for item in parameters:
+        if item.allow_reserved and item.location != "query":
+            raise GenerationError(
+                "allowReserved is supported only for query parameters"
+            )
         if item.style not in supported[item.location]:
             raise GenerationError(
                 f"unsupported {item.location} parameter style: {item.style!r}"

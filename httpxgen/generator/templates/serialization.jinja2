@@ -10,9 +10,6 @@ from pydantic import BaseModel, RootModel, TypeAdapter
 
 type Credential = str | tuple[str, str]
 
-_RESERVED_CHARACTERS = ":/?#[]@!$&'()*+,;="
-
-
 class UnsetType:
     pass
 
@@ -203,14 +200,35 @@ def serialize_path(
     explode: bool = False,
     allow_reserved: bool = False,
 ) -> str:
-    rendered = quote(
-        serialize_simple(value, explode=explode),
-        safe=_RESERVED_CHARACTERS if allow_reserved else "",
-    )
+    if allow_reserved:
+        raise ValueError("allowReserved is supported only for query parameters")
+    value = _plain(value)
+
+    def encoded(item: Any) -> str:
+        if isinstance(item, (Mapping, list, tuple)):
+            raise ValueError("path styles require scalar items and property values")
+        result = quote(scalar(item), safe="")
+        return result.replace(".", "%2E") if style == "label" else result
+
+    if isinstance(value, Mapping):
+        if explode:
+            delimiter = {"simple": ",", "label": ".", "matrix": ";"}[style]
+            rendered = delimiter.join(f"{encoded(key)}={encoded(item)}" for key, item in value.items())
+            if style == "matrix":
+                return f";{rendered}" if rendered else ""
+        else:
+            rendered = ",".join(encoded(item) for pair in value.items() for item in pair)
+    elif isinstance(value, (list, tuple)):
+        if style == "matrix" and explode:
+            return "".join(f";{encoded(name)}={encoded(item)}" for item in value)
+        delimiter = "." if style == "label" and explode else ","
+        rendered = delimiter.join(encoded(item) for item in value)
+    else:
+        rendered = encoded(value)
     if style == "label":
         rendered = f".{rendered}"
     if style == "matrix":
-        rendered = f";{name}={rendered}"
+        rendered = f";{encoded(name)}={rendered}"
     if rendered in {".", ".."}:
         return rendered.replace(".", "%2E")
     return rendered

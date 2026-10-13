@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 041 — Correct path style delimiters and explode
+
+- Encode individual path values before adding simple/label/matrix syntax and implement exploded array/object expansions.
+- Escape literal delimiters independently, retain dot-segment protection, and reject query-only allowReserved on other locations.
+- Added raw HTTPX path regressions for scalar/array/object styles and slash/percent/literal-delimiter data; regenerated the preview.
+
 ### Ticket 040 — Serialize allowReserved query values
 
 - Accept the reserved-query helper option and construct affected request URLs without HTTPX re-escaping the expanded values.

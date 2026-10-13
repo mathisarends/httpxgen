@@ -16,6 +16,68 @@ from httpxgen.generator.normalize import normalize_inline_schemas
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize(
+    ("style", "explode", "value", "expected"),
+    [
+        ("simple", False, "blue", "blue"),
+        ("simple", True, ["blue", "black"], "blue,black"),
+        ("simple", False, ["blue", "black"], "blue,black"),
+        ("simple", False, {"R": 100, "G": 200}, "R,100,G,200"),
+        ("simple", True, {"R": 100, "G": 200}, "R=100,G=200"),
+        ("label", False, "blue", ".blue"),
+        ("label", False, ["blue", "black"], ".blue,black"),
+        ("label", True, ["blue", "black"], ".blue.black"),
+        ("label", False, {"R": 100, "G": 200}, ".R,100,G,200"),
+        ("label", True, {"R": 100, "G": 200}, ".R=100.G=200"),
+        ("matrix", True, "blue", ";color=blue"),
+        ("matrix", False, ["blue", "black"], ";color=blue,black"),
+        ("matrix", True, ["blue", "black"], ";color=blue;color=black"),
+        ("matrix", False, {"R": 100, "G": 200}, ";color=R,100,G,200"),
+        ("matrix", True, {"R": 100, "G": 200}, ";R=100;G=200"),
+        ("simple", False, ["a,b", "c/%"], "a%2Cb,c%2F%25"),
+        ("label", True, ["a.b", "c/%"], ".a%2Eb.c%2F%25"),
+        ("matrix", True, {"a;b": "c=d/%"}, ";a%3Bb=c%3Dd%2F%25"),
+    ],
+)
+def test_041_path_styles_match_wire_expansions(
+    tmp_path, style, explode, value, expected
+):
+    if isinstance(value, dict):
+        schema = {
+            "type": "object",
+            "additionalProperties": {
+                "type": "integer"
+                if isinstance(next(iter(value.values())), int)
+                else "string"
+            },
+        }
+    elif isinstance(value, list):
+        schema = {"type": "array", "items": {"type": "string"}}
+    else:
+        schema = {"type": "string"}
+    paths = {
+        "/items/{color}": {
+            "get": {
+                "operationId": "run",
+                "parameters": [
+                    {
+                        "name": "color",
+                        "in": "path",
+                        "required": True,
+                        "style": style,
+                        "explode": explode,
+                        "schema": schema,
+                    }
+                ],
+                "responses": {"204": {}},
+            }
+        }
+    }
+    with generated(tmp_path, paths) as package:
+        requests, _ = invoke(package, lambda client: client.run(value))
+        assert requests[0].url.raw_path == f"/items/{expected}".encode()
+
+
 @pytest.mark.parametrize("required", [False, True])
 def test_040_reserved_query_values_reach_the_raw_url(tmp_path, required):
     parameters = [
