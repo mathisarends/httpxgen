@@ -202,7 +202,7 @@ def _string_type(schema: Mapping[str, Any]) -> str:
         "date-time": "datetime",
         "uuid": "UUID",
         "binary": "bytes",
-        "byte": "bytes",
+        "byte": "ByteValue",
     }.get(schema.get("format"), "str")
 
 

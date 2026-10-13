@@ -30,6 +30,25 @@ from httpxgen.generator.templates import TemplateName, render_template
 
 _MISSING = object()
 
+_BYTE_VALUE = """
+def _decode_byte(value: Any) -> Any:
+    if isinstance(value, str):
+        return b64decode(value, validate=True)
+    return value
+
+
+def _encode_byte(value: bytes) -> str:
+    return b64encode(value).decode("ascii")
+
+
+ByteValue = Annotated[
+    bytes,
+    BeforeValidator(_decode_byte),
+    PlainSerializer(_encode_byte, return_type=str, when_used="json"),
+    Field(json_schema_extra={"format": "byte"}),
+]
+""".strip()
+
 
 @dataclass(frozen=True)
 class _DiscriminatorEnum:
@@ -116,6 +135,8 @@ def render_models(
     )
     if "_one_of(" in body or "_one_of(" in operation_annotations:
         body = f"{_ONE_OF_VALIDATOR}\n\n\n{body}"
+    if "ByteValue" in body or "ByteValue" in operation_annotations:
+        body = f"{_BYTE_VALUE}\n\n\n{body}"
     imports = _render_model_imports(body, external, transport_module)
     return render_template(TemplateName.MODELS, imports=imports, body=body)
 
@@ -205,6 +226,8 @@ def _render_model_imports(
     transport_module: str = "transport",
 ) -> str:
     lines: list[str] = []
+    if "b64decode(" in body:
+        lines.append("from base64 import b64decode, b64encode")
     if "json." in body:
         lines.append("import json")
     datetime_names = used_names(body, ("date", "datetime"))
@@ -216,6 +239,7 @@ def _render_model_imports(
             "BeforeValidator",
             "ConfigDict",
             "Field",
+            "PlainSerializer",
             "TypeAdapter",
             "ValidationError",
             "model_validator",
