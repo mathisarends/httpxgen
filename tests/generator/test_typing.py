@@ -23,9 +23,28 @@ def test_generated_protocols_accept_httpx_without_casts(tmp_path, backend, concr
                         "requestBody": {
                             "required": True,
                             "content": {
-                                "application/json": {"schema": {"type": "integer"}}
+                                "application/json": {
+                                    "schema": {"type": "string", "format": "byte"}
+                                }
                             },
                         },
+                        "parameters": [
+                            {
+                                "name": "q",
+                                "in": "query",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {"type": "string", "format": "byte"}
+                                    }
+                                },
+                            },
+                            {
+                                "name": "reserved",
+                                "in": "query",
+                                "allowReserved": True,
+                                "schema": {"type": "string"},
+                            },
+                        ],
                         "responses": {"204": {}},
                     }
                 },

@@ -201,6 +201,8 @@ def _render_client_imports(
         by_module.setdefault(module, []).append(name)
     if "_one_of(" in annotations:
         by_module.setdefault(layout.models, []).append("_one_of")
+    if "ByteValue" in annotations:
+        by_module.setdefault(layout.models, []).append("ByteValue")
     lines.extend(
         _render_import(f"from {module} import", sorted(names))
         for module, names in sorted(by_module.items())

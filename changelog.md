@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 043 — Encode byte-format JSON as Base64
+
+- Use a Base64-aware bytes annotation for legacy byte-format fields and aliases, encoding arbitrary Python bytes and strictly decoding Base64 strings.
+- Keep raw binary bodies and multipart files unchanged; document invalid-Base64 response validation.
+- Added real HTTPX round trips for nested/aliased/component/root byte values, invalid strings, raw binary/multipart behavior, and generated static typing; regenerated the preview.
+
 ### Ticket 042 — Honor JSON parameter content
 
 - Retain selected parameter content encoding and serialize query/header/path values as compact JSON with validation, aliases, and formatted/null values.
@@ -242,7 +248,7 @@
 - Ordinary request models continue to send non-null schema defaults. JSON Merge Patch default omission is handled separately by ticket 002.
 - Added generated-client HTTPX regressions for required/optional bodies and media variants; regenerated the preview.
 
-### Ticket 037 â€” Restore Ruff format checks
+### Ticket 037 — Restore Ruff format checks
 
 - Apply the configured formatter to the four files failing the baseline CI format check, without runtime changes.
 - Delivered before the runtime stack so every PR can pass lint and format checks.

@@ -629,6 +629,12 @@ pagination, and a synchronous client.
 
 ## Development
 
+String `format: byte` values use standard Base64 in JSON (OpenAPI 3.0 and the
+legacy format in 3.1). Python bytes hold decoded data; Base64 strings are decoded
+with strict alphabet/padding validation. Invalid response strings raise
+`ResponseValidationError`. This does not change `format: binary`, raw binary
+bodies, or multipart file uploads.
+
 Parameter `content` supports one JSON/+json representation for query, header,
 and path positions. Values are validated and serialized as one compact JSON
 value with aliases and formatted fields. Required nullable parameters send JSON

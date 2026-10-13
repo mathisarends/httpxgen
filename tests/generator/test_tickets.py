@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import json
 import sys
+from base64 import b64encode
 from contextlib import contextmanager
 from datetime import date
 from email import policy
@@ -15,6 +16,158 @@ from httpxgen import OpenAPISpec, write_client
 from httpxgen.generator import GenerationError
 from httpxgen.generator.normalize import normalize_inline_schemas
 from httpxgen.selection import filter_operations_by_tags
+
+
+@pytest.mark.parametrize("version", ["3.0.3", "3.1.0"])
+@pytest.mark.parametrize("workspace", [False, True])
+def test_043_nested_byte_fields_round_trip_as_base64(tmp_path, version, workspace):
+    byte = {"type": "string", "format": "byte"}
+    schemas = {
+        "Blob": byte,
+        "Payload": {
+            "type": "object",
+            "required": ["wire-data", "nested"],
+            "properties": {
+                "wire-data": {"$ref": "#/components/schemas/Blob"},
+                "nested": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["wire-value"],
+                        "properties": {"wire-value": byte},
+                    },
+                },
+            },
+        },
+    }
+    media = {"application/json": {"schema": {"$ref": "#/components/schemas/Payload"}}}
+    paths = {
+        "/value": {
+            "post": {
+                "operationId": "sendValue",
+                "tags": ["one"],
+                "requestBody": {"required": True, "content": media},
+                "responses": {"200": {"content": media}},
+            }
+        }
+    }
+    tags = ()
+    client_name = "TicketApiClient"
+    if workspace:
+        paths["/other"] = {
+            "get": {"operationId": "other", "tags": ["two"], "responses": {"204": {}}}
+        }
+        tags = ("one", "two")
+        client_name = "OneClient"
+    raw = b"\xff\x00\x80abc"
+    encoded = b64encode(raw).decode("ascii")
+    wire = {"wire-data": encoded, "nested": [{"wire-value": "YWJj"}]}
+    with generated(tmp_path, paths, schemas, tags=tags, openapi=version) as package:
+        model = package.Payload.model_validate(
+            {"wire-data": raw, "nested": [{"wire-value": b"abc"}]}
+        )
+        assert model.model_dump(mode="json", by_alias=True) == wire
+        requests, result = invoke(
+            package,
+            lambda client: client.send_value(model),
+            lambda _: httpx.Response(200, json=wire),
+            client_name=client_name,
+        )
+        assert json.loads(requests[0].content) == wire
+        assert result.wire_data == raw
+        assert result.nested[0].wire_value == b"abc"
+        for invalid in ["%%%", "YWJ", "YWJj\n", "é", "-_8="]:
+            with pytest.raises(package.ResponseValidationError):
+                invoke(
+                    package,
+                    lambda client: client.send_value(model),
+                    lambda _, invalid=invalid: httpx.Response(
+                        200, json={**wire, "wire-data": invalid}
+                    ),
+                    client_name=client_name,
+                )
+        with pytest.raises(package.RequestValidationError):
+            invoke(
+                package,
+                lambda client: client.send_value({"wire-data": "%%%", "nested": []}),
+                client_name=client_name,
+            )
+
+
+@pytest.mark.parametrize("reference", [False, True])
+def test_043_root_byte_json_round_trip(tmp_path, reference):
+    byte = {"type": "string", "format": "byte"}
+    schema = {"$ref": "#/components/schemas/Blob"} if reference else byte
+    media = {"application/json": {"schema": schema}}
+    paths = {
+        "/value": {
+            "post": {
+                "operationId": "sendValue",
+                "requestBody": {"required": True, "content": media},
+                "responses": {"200": {"content": media}},
+            }
+        }
+    }
+    with generated(tmp_path, paths, {"Blob": byte} if reference else {}) as package:
+        requests, result = invoke(
+            package,
+            lambda client: client.send_value(b"\xff\x00"),
+            lambda _: httpx.Response(200, json="/wA="),
+        )
+        assert json.loads(requests[0].content) == "/wA="
+        assert result == b"\xff\x00"
+
+
+def test_043_raw_binary_and_multipart_files_remain_raw(tmp_path):
+    paths = {
+        "/raw": {
+            "post": {
+                "operationId": "sendRaw",
+                "requestBody": {
+                    "required": True,
+                    "content": {"application/octet-stream": {}},
+                },
+                "responses": {"200": {"content": {"application/octet-stream": {}}}},
+            }
+        },
+        "/file": {
+            "post": {
+                "operationId": "sendFile",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["file"],
+                                "properties": {
+                                    "file": {"type": "string", "format": "binary"}
+                                },
+                            }
+                        }
+                    },
+                },
+                "responses": {"204": {}},
+            }
+        },
+    }
+    raw = b"\xff\x00binary"
+    with generated(tmp_path, paths) as package:
+        requests, result = invoke(
+            package,
+            lambda client: client.send_raw(raw),
+            lambda _: httpx.Response(
+                200, content=raw, headers={"Content-Type": "application/octet-stream"}
+            ),
+        )
+        assert requests[0].content == result == raw
+        requests, _ = invoke(package, lambda client: client.send_file(raw))
+        request = requests[0]
+        message = BytesParser(policy=policy.default).parsebytes(
+            f"Content-Type: {request.headers['Content-Type']}\r\n\r\n".encode()
+            + request.content
+        )
+        assert next(message.iter_parts()).get_payload(decode=True) == raw
 
 
 @pytest.mark.parametrize("location", ["query", "header", "path"])

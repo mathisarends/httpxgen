@@ -22,6 +22,8 @@ _RESERVED_NAMES = {
     "BaseModel",
     "ConfigDict",
     "ClassVar",
+    "ByteValue",
+    "PlainSerializer",
     "Self",
     "model_validator",
     "Field",

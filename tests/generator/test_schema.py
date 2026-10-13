@@ -17,6 +17,8 @@ from httpxgen.generator.schema import (
         ({"type": ["string", "null"]}, "str | None"),
         ({"type": "string", "format": "date-time"}, "datetime"),
         ({"type": "string", "format": "uuid"}, "UUID"),
+        ({"type": "string", "format": "byte"}, "ByteValue"),
+        ({"type": "string", "format": "binary"}, "bytes"),
         ({"const": "card"}, 'Literal["card"]'),
         ({"enum": ["open", "closed"]}, 'Literal["open", "closed"]'),
         (
