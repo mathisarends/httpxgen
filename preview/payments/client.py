@@ -37,6 +37,7 @@ from preview.shared import (
     TransportError,
     UploadInput,
     apply_security,
+    binary_content,
     scalar,
     serialize_json_body,
     serialize_path,
@@ -324,7 +325,7 @@ class PaymentsClient:
                 method=HttpMethods.PUT,
                 url=f"{self._base_url}{path}",
                 headers=headers,
-                content=body,
+                content=binary_content(body),
                 timeout=self._timeout if timeout is None else timeout,
             )
         except ClientError:

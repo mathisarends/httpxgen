@@ -182,7 +182,7 @@ def _render_client_imports(
         for operation in operations
         for body in _operation_bodies(operation)
     ):
-        transport_names.append("BinaryContent")
+        transport_names.extend(["BinaryContent", "binary_content"])
     if any(
         body.kind == "multipart"
         for operation in operations
@@ -585,7 +585,8 @@ def _render_body_variant(body: Body, indent: str) -> list[str]:
                 f"{indent}body_arguments.update(data=form_data, files=files)\n"
             )
     else:
-        lines = [f'{indent}body_arguments["content"] = body\n']
+        value = "binary_content(body)" if body.kind == "binary" else "body"
+        lines = [f'{indent}body_arguments["content"] = {value}\n']
     if _body_needs_content_type(body):
         lines.append(
             f'{indent}headers.setdefault("Content-Type", '
@@ -681,7 +682,8 @@ def _render_request_arguments(operation: Operation) -> list[str]:
         elif body.kind == "multipart":
             arguments.append("files=files")
         else:
-            arguments.append("content=body")
+            value = "binary_content(body)" if body.kind == "binary" else "body"
+            arguments.append(f"content={value}")
     arguments.append("timeout=self._timeout if timeout is None else timeout")
     return arguments
 

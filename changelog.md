@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 009 — Support synchronous binary upload iterables
+
+- Adapt synchronous binary iterables lazily to async-compatible chunks, preserving bytes and async iterables.
+- Upload generator failures retain their cause in `TransportError`.
+- Added lazy-consumption and runtime upload regressions for protocol/HTTPX modes and required/optional bodies; regenerated the preview.
+
 ### Ticket 008 — Wrap binary stream read failures
 
 - Buffered and streaming binary reads now raise `TransportError`, preserving the original cause and exception chain.

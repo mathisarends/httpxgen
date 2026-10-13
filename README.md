@@ -307,6 +307,9 @@ The same direct shape is used for JSON, form, text, and small binary bodies.
 An `application/octet-stream` body accepts `bytes`, `Iterable[bytes]`, or
 `AsyncIterable[bytes]` and is passed directly as `content=`.
 
+Synchronous binary iterables are adapted lazily to async chunks. Exceptions
+raised while consuming an upload iterable are reported as `TransportError`.
+
 Multipart fields are flattened into method arguments. Binary arrays become
 repeated parts with the same wire name. Parameter and multipart argument names
 that collide with generated locals (such as `path`, `headers`, or `files`) gain
