@@ -545,6 +545,10 @@ Query names beginning with `_` or `model_` receive a public `field`/`field_`
 prefix in generated signatures and query models. Their wire names and
 validation constraints remain intact.
 
+Leading-underscore schema properties also receive a `field` prefix (for example,
+`_id` becomes `field_id`) and keep an explicit wire alias. They are validated
+ordinary model fields, including when additional properties are forbidden.
+
 Operation names that collide with generated lifecycle methods or streaming
 companions fail generation before writing files; rename the conflicting
 `operationId` in the specification.

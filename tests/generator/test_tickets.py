@@ -15,6 +15,49 @@ from httpxgen.generator import GenerationError
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize("extra", [True, False])
+def test_022_underscore_properties_are_validated_fields(tmp_path, extra):
+    shape = {
+        "type": "object",
+        "required": ["_id"],
+        "additionalProperties": extra,
+        "properties": {"_id": {"type": "string", "minLength": 2}},
+    }
+    content = {"application/json": {"schema": {"$ref": "#/components/schemas/Item"}}}
+    paths = {
+        "/item": {
+            "post": {
+                "operationId": "createItem",
+                "requestBody": {"required": True, "content": content},
+                "responses": {"200": {"content": content}},
+            }
+        }
+    }
+    with generated(tmp_path, paths, {"Item": shape}) as package:
+        body = package.Item(field_id="ok")
+        assert "field_id" in package.Item.model_fields
+        seen, result = invoke(
+            package,
+            lambda client: client.create_item(body),
+            lambda _: httpx.Response(200, json={"_id": "result"}),
+        )
+        assert result.field_id == "result"
+        assert json.loads(seen[0].content) == {"_id": "ok"}
+        for invalid in [{}, {"_id": 3}, {"_id": "x"}]:
+            with pytest.raises(package.ResponseValidationError):
+                invoke(
+                    package,
+                    lambda client: client.create_item(body),
+                    lambda _, invalid=invalid: httpx.Response(200, json=invalid),
+                )
+    shape["properties"]["field_id"] = {"type": "string"}
+    with (
+        pytest.raises(GenerationError, match="property names collide"),
+        generated(tmp_path / "collision", paths, {"Item": shape}),
+    ):
+        pass
+
+
 @pytest.mark.parametrize(
     "wire,python_name",
     [

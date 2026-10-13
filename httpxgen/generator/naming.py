@@ -22,6 +22,8 @@ def identifier(value: str) -> str:
 
 def field_identifier(value: str) -> str:
     result = identifier(value)
+    if result.startswith("_"):
+        result = f"field{result}"
     if result.startswith("model_"):
         result += "_"
     return result
