@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Ticket 038 — Reject nonobject allOf compositions
+
+- Resolve referenced base kinds before accepting object inheritance; reject scalar/array intersections and incompatible nullable/union bases before writing output.
+- Added generation-failure regressions and a real HTTPX response test preserving supported object inheritance.
+
 ### Ticket 036 — Synchronize editable project lock metadata
 
 - Update the lockfile root version from 0.1.0 to 0.2.0 without changing dependencies.

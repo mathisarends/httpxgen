@@ -16,6 +16,93 @@ from httpxgen.generator.normalize import normalize_inline_schemas
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize(
+    "base",
+    [
+        {"type": "integer"},
+        {"type": "array", "items": {"type": "string"}},
+        {"type": "string"},
+    ],
+)
+def test_038_nonobject_allof_fails_before_output(tmp_path, base):
+    paths = {
+        "/value": {
+            "get": {
+                "operationId": "getValue",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Count"}
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    }
+    schemas = {
+        "Value": base,
+        "Count": {"allOf": [{"$ref": "#/components/schemas/Value"}, {"minimum": 1}]},
+    }
+    with (
+        pytest.raises(GenerationError, match="allOf supports only object inheritance"),
+        generated(tmp_path, paths, schemas),
+    ):
+        pass
+    assert not (tmp_path / "ticket_api").exists()
+
+
+def test_038_object_allof_still_parses_responses(tmp_path):
+    paths = {
+        "/value": {
+            "get": {
+                "operationId": "getValue",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Entity"}
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    }
+    schemas = {
+        "Base": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {"id": {"type": "integer"}},
+        },
+        "Entity": {
+            "allOf": [
+                {"$ref": "#/components/schemas/Base"},
+                {
+                    "type": "object",
+                    "required": ["label"],
+                    "properties": {"label": {"type": "string"}},
+                },
+            ]
+        },
+    }
+    with generated(tmp_path, paths, schemas) as package:
+        _, result = invoke(
+            package,
+            lambda client: client.get_value(),
+            lambda _: httpx.Response(200, json={"id": 2, "label": "valid"}),
+        )
+        assert isinstance(result, package.Base)
+        assert (result.id, result.label) == (2, "valid")
+        with pytest.raises(package.ResponseValidationError):
+            invoke(
+                package,
+                lambda client: client.get_value(),
+                lambda _: httpx.Response(200, json={"label": "missing id"}),
+            )
+
+
 @pytest.mark.parametrize("headers", [False, True])
 def test_034_api_error_accessors_reach_typed_body_only(tmp_path, headers):
     error_response = {
