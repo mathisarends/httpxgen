@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 021 — Normalize protected/private query fields
+
+- Prefix protected `model_` query names and leading-underscore names with safe public field names throughout signatures, models, construction, and access.
+- Preserve exact wire names and required/constraint validation; normalized collisions still fail early.
+- Added protected/private query runtime regressions.
+
 ### Ticket 020 — Reserve the content_type control argument
 
 - Reject API parameters that collide with the generated media-selection argument on operations offering multiple request media types.

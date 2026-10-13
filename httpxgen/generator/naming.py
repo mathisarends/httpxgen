@@ -34,6 +34,15 @@ def argument_identifier(value: str) -> str:
     return result
 
 
+def query_identifier(value: str) -> str:
+    result = argument_identifier(value)
+    if result.startswith("_"):
+        return f"field{result}"
+    if result.startswith("model_"):
+        return f"field_{result}"
+    return result
+
+
 _OPERATION_LOCALS = {
     "path",
     "params",
