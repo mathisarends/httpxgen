@@ -14,6 +14,44 @@ from httpxgen import OpenAPISpec, write_client
 from httpxgen.generator import GenerationError
 
 
+@pytest.mark.parametrize("value", ["word", 7])
+def test_014_inline_oneof_imports_and_runtime(tmp_path, value):
+    one_of = {"oneOf": [{"type": "string"}, {"type": "integer"}]}
+    paths = {
+        "/item/{id}": {
+            "put": {
+                "operationId": "putItem",
+                "parameters": [
+                    {"name": name, "in": location, "required": True, "schema": one_of}
+                    for name, location in [
+                        ("id", "path"),
+                        ("q", "query"),
+                        ("X-Value", "header"),
+                    ]
+                ],
+                "requestBody": {
+                    "required": True,
+                    "content": {"application/json": {"schema": one_of}},
+                },
+                "responses": {
+                    "200": {"content": {"application/json": {"schema": one_of}}}
+                },
+            }
+        }
+    }
+    with generated(tmp_path, paths) as package:
+        seen, result = invoke(
+            package,
+            lambda client: client.put_item(
+                id=value, q=value, x__value=value, body=value
+            ),
+            lambda _: httpx.Response(200, json=value),
+        )
+        assert result == value
+        assert json.loads(seen[0].content) == value
+        assert seen[0].url.params["q"] == str(value)
+
+
 @pytest.mark.parametrize("version", ["3.0.3", "3.1.0"])
 def test_013_nullable_component_references(tmp_path, version):
     thing = {
