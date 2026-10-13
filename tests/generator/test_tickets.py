@@ -16,6 +16,75 @@ from httpxgen.generator.normalize import normalize_inline_schemas
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize("composition", [False, True])
+@pytest.mark.parametrize("directional", [False, True])
+def test_039_undeclared_required_keys_validate_requests_and_responses(
+    tmp_path, composition, directional
+):
+    entity = {"type": "object", "required": ["id"]}
+    if directional:
+        entity["properties"] = {
+            "server": {"type": "string", "readOnly": True},
+            "secret": {"type": "string", "writeOnly": True},
+        }
+    schemas = {"Entity": entity}
+    if composition:
+        schemas = {
+            "Base": entity,
+            "Entity": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/Base"},
+                    {"type": "object", "properties": {"label": {"type": "string"}}},
+                ]
+            },
+        }
+    media = {"application/json": {"schema": {"$ref": "#/components/schemas/Entity"}}}
+    paths = {
+        "/entity": {
+            "post": {
+                "operationId": "saveEntity",
+                "requestBody": {"required": True, "content": media},
+                "responses": {"200": {"content": media}},
+            }
+        }
+    }
+    with generated(tmp_path, paths, schemas) as package:
+        for value in [123, None, "text", {"nested": [1]}]:
+            requests, result = invoke(
+                package,
+                lambda client, value=value: client.save_entity({"id": value}),
+                lambda _, value=value: httpx.Response(200, json={"id": value}),
+            )
+            assert json.loads(requests[0].content) == {"id": value}
+            assert result.model_dump(by_alias=True)["id"] == value
+        with pytest.raises(package.RequestValidationError):
+            invoke(package, lambda client: client.save_entity({}))
+        with pytest.raises(package.ResponseValidationError):
+            invoke(
+                package,
+                lambda client: client.save_entity({"id": 1}),
+                lambda _: httpx.Response(200, json={}),
+            )
+
+
+def test_039_required_extra_keys_keep_additional_property_validation(tmp_path):
+    schema = {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": {"type": "integer"},
+    }
+    with generated(tmp_path, {}, {"Entity": schema}) as package:
+        assert package.Entity.model_validate({"id": 123}).model_dump() == {"id": 123}
+        for invalid in [{}, {"id": "bad"}]:
+            with pytest.raises(ValueError):
+                package.Entity.model_validate(invalid)
+    schema["additionalProperties"] = False
+    with generated(tmp_path, {}, {"Entity": schema}) as package:
+        for invalid in [{}, {"id": 1}]:
+            with pytest.raises(ValueError):
+                package.Entity.model_validate(invalid)
+
+
 @pytest.mark.parametrize(
     "base",
     [

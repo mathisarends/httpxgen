@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 039 — Enforce required keys without property schemas
+
+- Generate presence validators for undeclared/inherited required keys without inventing value types or bypassing additional-property validation.
+- Preserve undeclared required keys when creating request/response schema variants.
+- Added request/response, inheritance, directional, typed-extra, and forbidden-extra regressions.
+
 ### Ticket 038 — Reject nonobject allOf compositions
 
 - Resolve referenced base kinds before accepting object inheritance; reject scalar/array intersections and incompatible nullable/union bases before writing output.

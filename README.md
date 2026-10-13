@@ -614,6 +614,10 @@ Pydantic models, enums, nullable values, discriminated unions, and practical
 `allOf` supports object-model inheritance. Scalar/array intersections and
 nullable or union bases fail generation with an unsupported-composition error.
 
+Required object keys without declared property schemas retain presence checks
+and their additional-property validation, including inherited and directional
+models. Their values remain unconstrained when additional properties are allowed.
+
 Unsupported constructs fail generation where possible. Important remaining
 limitations are external references, callbacks/webhooks, automatic
 pagination, and a synchronous client.

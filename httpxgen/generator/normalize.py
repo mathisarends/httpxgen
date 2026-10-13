@@ -643,7 +643,9 @@ def _split_directional_schemas(document: dict[str, Any]) -> None:
             result["properties"] = kept
             if isinstance(value.get("required"), list):
                 result["required"] = [
-                    name for name in value["required"] if name in kept
+                    name
+                    for name in value["required"]
+                    if name not in properties or name in kept
                 ]
         discriminator = result.get("discriminator")
         if isinstance(discriminator, dict) and isinstance(
