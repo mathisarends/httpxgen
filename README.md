@@ -553,6 +553,10 @@ client-check:
 
 ## Supported scope
 
+HTTP header names merge case-insensitively. Configured values override generated
+defaults; operation header parameters override configured values; applied
+security credentials take precedence over both. Each logical header is sent once.
+
 Recursive array and `anyOf` aliases use lazy Python 3.12+ type aliases, including
 mutual recursion. Recursive nondiscriminated `oneOf` and reference-only aliases are rejected with
 an actionable error; ordinary aliases and recursive object models stay readable.

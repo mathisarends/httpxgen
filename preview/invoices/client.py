@@ -25,9 +25,11 @@ from preview.shared import (
     ResponseValidationError,
     TransportError,
     apply_security,
+    merge_headers,
     serialize_json_body,
     serialize_path,
     serialize_query,
+    set_header,
 )
 from preview.shared.models import ApiErrorModel
 
@@ -44,7 +46,7 @@ class InvoicesClient:
     ) -> None:
         self._client = http_client
         self._base_url = base_url.rstrip("/")
-        self._headers = dict(headers) if headers else {}
+        self._headers = merge_headers(headers)
         self._credentials = dict(credentials) if credentials else {}
         self._timeout = timeout
 
@@ -81,7 +83,7 @@ class InvoicesClient:
             query.extend(serialize_query("page_size", params.page_size))
 
             headers = dict(self._headers)
-            headers.setdefault("Accept", "application/json")
+            set_header(headers, "Accept", "application/json", default=True)
 
             apply_security(self._credentials, [("bearerAuth",)], headers, query, {})
 
@@ -126,7 +128,7 @@ class InvoicesClient:
             path = "/invoices"
 
             headers = dict(self._headers)
-            headers.setdefault("Accept", "application/json")
+            set_header(headers, "Accept", "application/json", default=True)
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
@@ -136,7 +138,7 @@ class InvoicesClient:
             )
             if body_arguments["json"] is None:
                 body_arguments = {"content": b"null"}
-            headers.setdefault("Content-Type", "application/json")
+            set_header(headers, "Content-Type", "application/json", default=True)
 
         except ClientError:
             raise
@@ -183,7 +185,7 @@ class InvoicesClient:
             path = path.replace("{invoiceId}", serialize_path("invoiceId", invoice_id))
 
             headers = dict(self._headers)
-            headers.setdefault("Accept", "application/json")
+            set_header(headers, "Accept", "application/json", default=True)
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
@@ -231,7 +233,7 @@ class InvoicesClient:
             path = path.replace("{invoiceId}", serialize_path("invoiceId", invoice_id))
 
             headers = dict(self._headers)
-            headers.setdefault("Accept", "application/json")
+            set_header(headers, "Accept", "application/json", default=True)
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 

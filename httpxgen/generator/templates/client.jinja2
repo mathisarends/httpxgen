@@ -13,7 +13,7 @@ class {{ client_name }}:
     ) -> None:
         self._client = http_client
         self._base_url = base_url.rstrip("/")
-        self._headers = dict(headers) if headers else {}
+        self._headers = merge_headers(headers)
         self._credentials = dict(credentials) if credentials else {}
         self._timeout = timeout
 

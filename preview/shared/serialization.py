@@ -24,6 +24,22 @@ class UnsetType:
 UNSET = UnsetType()
 
 
+def set_header(headers: dict[str, str], name: str, value: str, *, default: bool = False) -> None:
+    matches = [key for key in headers if key.lower() == name.lower()]
+    if default and matches:
+        return
+    for key in matches:
+        del headers[key]
+    headers[name] = value
+
+
+def merge_headers(values: Mapping[str, str] | None) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    for name, value in (values or {}).items():
+        set_header(headers, name, value)
+    return headers
+
+
 def serialize_json_part(value: Any, annotation: Any) -> str:
     return TypeAdapter(annotation).dump_json(value, by_alias=True).decode()
 
@@ -201,7 +217,7 @@ def apply_security(
         scheme = SECURITY_SCHEMES[name]
         value = _credential_value(scheme, name, credentials[name])
         if scheme.location == "header":
-            headers[scheme.parameter_name] = value
+            set_header(headers, scheme.parameter_name, value)
         elif scheme.location == "query":
             query.append((scheme.parameter_name, value))
         else:

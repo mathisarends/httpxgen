@@ -68,6 +68,8 @@ _OPERATION_LOCALS = {
     "binary_content",
     "serialize_json_part",
     "serialize_form_body",
+    "merge_headers",
+    "set_header",
     "stream",
     "item",
     "scalar",
