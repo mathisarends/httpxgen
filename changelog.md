@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 035 — Reconcile obsolete generated modules
+
+- Detect old generated modules after layout/tag changes in check mode and remove them during regeneration.
+- Limit cleanup to files with the generator header inside the output package; preserve handwritten/binary assets and unmanaged package markers.
+- Added a workspace-to-single-client regression checking read-only stale detection and obsolete import removal.
+
 ### Ticket 034 — Expose ApiError payload convenience values
 
 - Mark generated response wrappers explicitly and read `ApiError.code`/`message` from their typed payload while keeping header and compatibility accessors intact.
