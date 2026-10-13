@@ -611,6 +611,9 @@ security schemes, directional request/response models, inline and recursive
 Pydantic models, enums, nullable values, discriminated unions, and practical
 `allOf` inheritance.
 
+`allOf` supports object-model inheritance. Scalar/array intersections and
+nullable or union bases fail generation with an unsupported-composition error.
+
 Unsupported constructs fail generation where possible. Important remaining
 limitations are external references, callbacks/webhooks, automatic
 pagination, and a synchronous client.

@@ -172,6 +172,7 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
     _split_directional_schemas(document)
     try:
         _validate_references(document)
+        _validate_all_of_kinds(document, schemas)
         _validate_schema_semantics(schemas)
         _validate_all_of_conflicts(schemas)
         return OpenAPISpec.model_validate(document)
@@ -425,6 +426,60 @@ def _validate_default(schema: dict[str, Any], location: str) -> None:
     typed = {item for item in allowed if item in checks}
     if typed and not any(checks[item](default) for item in typed):
         raise GenerationError(f"{location}: default does not match schema type")
+
+
+def _validate_all_of_kinds(
+    document: dict[str, Any], schemas: dict[str, dict[str, Any]]
+) -> None:
+    scalar_keywords = {
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "items",
+        "minItems",
+        "maxItems",
+        "oneOf",
+        "anyOf",
+        "enum",
+        "const",
+    }
+
+    def object_part(schema: dict[str, Any], seen: frozenset[str]) -> bool:
+        if scalar_keywords.intersection(schema) or schema.get("nullable") is True:
+            raise GenerationError(
+                "allOf supports only object inheritance; "
+                "nonobject composition is unsupported"
+            )
+        raw_type = schema.get("type")
+        if raw_type is not None and raw_type != "object":
+            raise GenerationError(
+                "allOf supports only object inheritance; "
+                f"base type {raw_type!r} is unsupported"
+            )
+        is_object = raw_type == "object" or "properties" in schema
+        if reference := schema.get("$ref"):
+            name = reference.rsplit("/", 1)[-1].replace("~1", "/").replace("~0", "~")
+            if name in seen:
+                raise GenerationError("cyclic allOf inheritance is unsupported")
+            is_object |= object_part(schemas[name], seen | {name})
+        for part in schema.get("allOf", []):
+            is_object |= object_part(part, seen)
+        return is_object
+
+    for schema, kind in openapi_nodes(document):
+        if (
+            kind == "schema"
+            and schema.get("allOf")
+            and not object_part(schema, frozenset())
+        ):
+            raise GenerationError(
+                "allOf supports only object inheritance; no object base was declared"
+            )
 
 
 def _validate_all_of_conflicts(schemas: dict[str, dict[str, Any]]) -> None:
