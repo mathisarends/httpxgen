@@ -3,11 +3,85 @@ import importlib
 import json
 import sys
 from contextlib import contextmanager
+from email import policy
+from email.parser import BytesParser
 
 import httpx
 import pytest
 
 from httpxgen import OpenAPISpec, write_client
+
+
+@pytest.mark.parametrize("kind", ["bytes", "handle", "default", "metadata", "none"])
+def test_010_multipart_file_parts_have_filenames(tmp_path, kind):
+    paths = {
+        "/upload": {
+            "post": {
+                "operationId": "upload",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["files"],
+                                "properties": {
+                                    "files": {
+                                        "type": "array",
+                                        "items": {"type": "string", "format": "binary"},
+                                    }
+                                },
+                            }
+                        }
+                    },
+                },
+                "responses": {"204": {}},
+            }
+        }
+    }
+    file_path = tmp_path / "source.bin"
+    file_path.write_bytes(b"payload")
+    with generated(tmp_path, paths) as package, file_path.open("rb") as handle:
+        value = {
+            "bytes": b"payload",
+            "handle": handle,
+            "default": package.UploadFile(b"payload"),
+            "metadata": package.UploadFile(
+                b"payload",
+                filename="chosen.dat",
+                content_type="application/custom",
+                headers={"X-Part": "yes"},
+            ),
+            "none": package.UploadFile(b"payload", filename=None),
+        }[kind]
+        helper = importlib.import_module("ticket_api.transport").upload_file_part
+        helper(value)
+        assert handle.tell() == 0
+        seen, _ = invoke(
+            package, lambda client: client.upload(files_arg=[value, b"second"])
+        )
+        message = BytesParser(policy=policy.default).parsebytes(
+            (
+                f"Content-Type: {seen[0].headers['Content-Type']}\r\n"
+                "MIME-Version: 1.0\r\n\r\n"
+            ).encode()
+            + seen[0].content
+        )
+        parts = list(message.iter_parts())
+        assert len(parts) == 2
+        assert parts[0].get_payload(decode=True) == b"payload"
+        expected = {
+            "bytes": "upload",
+            "handle": "source.bin",
+            "default": "upload",
+            "metadata": "chosen.dat",
+            "none": None,
+        }[kind]
+        assert parts[0].get_filename() == expected
+        assert parts[1].get_filename() == "upload"
+        if kind == "metadata":
+            assert parts[0].get_content_type() == "application/custom"
+            assert parts[0]["X-Part"] == "yes"
 
 
 @pytest.mark.parametrize("backend", ["protocol", "httpx"])
