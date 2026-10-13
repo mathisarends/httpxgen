@@ -302,6 +302,8 @@ def _validate_references(document: dict[str, Any]) -> None:
 
 def _normalize_oas30_keywords(value: Any) -> None:
     if isinstance(value, dict):
+        if "type" not in value:
+            value.pop("nullable", None)
         if isinstance(value.get("exclusiveMinimum"), bool):
             exclusive = value.pop("exclusiveMinimum")
             if exclusive and "minimum" in value:

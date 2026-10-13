@@ -541,6 +541,10 @@ client-check:
 
 ## Supported scope
 
+References to nullable object components accept null in response bodies, request
+arguments, and nested fields while keeping the object model's required fields
+and constraints. OpenAPI 3.0 `nullable` requires an explicit type.
+
 URL-encoded forms honor supported per-field style/explode encodings and JSON
 contentType. Object values use JSON by default; explicit form styles can flatten
 simple objects. Unsupported encoding options (including form allowReserved)

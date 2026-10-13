@@ -321,11 +321,11 @@ def _render_component(
             members=members or "    pass",
         ).rstrip("\n")
     if enum is not None:
-        return f"{component_class_name} = {schema_type(schema)}"
+        return f"{component_class_name} = {schema_type(schema, schemas)}"
 
     variants = schema.get("oneOf") or schema.get("anyOf")
     if variants:
-        union = " | ".join(schema_type(item) for item in variants)
+        union = " | ".join(schema_type(item, schemas) for item in variants)
         discriminator = schema.get("discriminator", {}).get("propertyName")
         if discriminator:
             rendered = (
@@ -346,12 +346,12 @@ def _render_component(
                 "]"
             )
         if "oneOf" in schema:
-            annotation = schema_type(schema)
+            annotation = schema_type(schema, schemas)
             rendered = f"{component_class_name} = {annotation}"
             if len(rendered) <= 88:
                 return rendered
             variant_lines = "\n".join(
-                f"        {schema_type(item)}," for item in variants
+                f"        {schema_type(item, schemas)}," for item in variants
             )
             rendered_union = (
                 union
@@ -370,7 +370,7 @@ def _render_component(
 
     bases, own_schema = split_all_of(schema)
     if not is_object(own_schema) and not bases:
-        return f"{component_class_name} = {schema_type(own_schema)}"
+        return f"{component_class_name} = {schema_type(own_schema, schemas)}"
 
     base = ", ".join(bases) if bases else "BaseModel"
     properties = own_schema.get("properties", {})
@@ -393,7 +393,7 @@ def _render_component(
     if isinstance(additional, Mapping):
         fields.append(
             "__pydantic_extra__: dict[str, "
-            f"{schema_type(additional)}] = Field(init=False)"
+            f"{schema_type(additional, schemas)}] = Field(init=False)"
         )
     return render_template(
         TemplateName.MODEL,
@@ -418,7 +418,7 @@ def _render_field(
     annotation = (
         _discriminator_annotation(schema, discriminator_enum)
         if discriminator_enum
-        else schema_type(schema)
+        else schema_type(schema, schemas)
     )
     field_args: list[str] = []
     if field_name != wire_name:

@@ -238,7 +238,7 @@ def _read_parameters(
         schema = value.schema_
         if value.content:
             schema, _, _ = _select_media(value.content, "parameter", kinds=("json",))
-        annotation = schema_type(schema)
+        annotation = schema_type(schema, spec.components.schemas)
         if (
             not required
             and schema.get("default", NO_DEFAULT) is NO_DEFAULT
@@ -337,7 +337,11 @@ def _read_bodies(
         "request body",
         kinds=("json", "form", "multipart", "text", "binary"),
     ):
-        annotation = "BinaryContent" if kind == "binary" else schema_type(schema)
+        annotation = (
+            "BinaryContent"
+            if kind == "binary"
+            else schema_type(schema, spec.components.schemas)
+        )
         shape = schema
         if "$ref" in schema:
             name = _reference_name(schema["$ref"], "schemas")
@@ -496,7 +500,7 @@ def _read_bodies(
                 if is_file and is_array
                 else "UploadInput"
                 if is_file
-                else schema_type(field)
+                else schema_type(field, spec.components.schemas)
             )
             multipart_fields.append(
                 MultipartField(
@@ -507,7 +511,7 @@ def _read_bodies(
                     is_file=is_file,
                     is_array=is_array,
                     content_type=content_type,
-                    json_annotation=schema_type(item)
+                    json_annotation=schema_type(item, spec.components.schemas)
                     if json_encoded and not is_file
                     else None,
                 )
@@ -549,7 +553,9 @@ def _read_responses(
         if response.content:
             contents = tuple(
                 ResponseContent(
-                    annotation=_content_annotation(schema, kind),
+                    annotation=_content_annotation(
+                        schema, kind, spec.components.schemas
+                    ),
                     model_annotation=_response_model(schema, spec.components.schemas),
                     kind=kind,
                     media_type=media_type,
@@ -625,7 +631,7 @@ def _read_response_headers(
             ResponseHeader(
                 name=_header_identifier(wire_name),
                 wire_name=wire_name,
-                annotation=schema_type(header.schema_),
+                annotation=schema_type(header.schema_, spec.components.schemas),
             )
         )
     names = [header.name for header in headers]
@@ -666,6 +672,8 @@ def _response_model(
     schemas: Mapping[str, Any],
 ) -> str | None:
     if not schema or "$ref" not in schema:
+        return None
+    if "None" in schema_type(schema, schemas):
         return None
     name = _reference_name(schema["$ref"], "schemas")
     bases, own_schema = split_all_of(schemas.get(name, {}))
@@ -728,12 +736,14 @@ def _media_schema(media: MediaType, kind: str) -> Mapping[str, Any]:
     return {}
 
 
-def _content_annotation(schema: Mapping[str, Any], kind: str) -> str:
+def _content_annotation(
+    schema: Mapping[str, Any], kind: str, schemas: Mapping[str, Any] | None = None
+) -> str:
     if kind == "binary":
         return "bytes"
     if kind == "text":
         return "str"
-    return schema_type(schema)
+    return schema_type(schema, schemas)
 
 
 def _resolve_component(
