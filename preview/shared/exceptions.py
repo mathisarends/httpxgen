@@ -3,7 +3,12 @@
 # ============================================================================
 
 
-from preview.shared.transport import HttpResponse
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from preview.shared.transport import HttpResponse
 
 
 class ClientError(Exception):

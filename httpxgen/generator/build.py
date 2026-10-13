@@ -62,7 +62,9 @@ def generate_client(
             ),
             "http_methods.py": render_template(TemplateName.HTTP_METHODS),
             "transport.py": render_template(
-                TemplateName.TRANSPORT, http_client=http_client
+                TemplateName.TRANSPORT,
+                http_client=http_client,
+                exceptions_module=layout.exceptions,
             ),
             "serialization.py": render_serialization(read_security_schemes(spec)),
             "__init__.py": render_package_init(schemas, client_name, operations),
@@ -106,7 +108,9 @@ def generate_workspace(
         ),
         f"{_SHARED}/http_methods.py": render_template(TemplateName.HTTP_METHODS),
         f"{_SHARED}/transport.py": render_template(
-            TemplateName.TRANSPORT, http_client=http_client
+            TemplateName.TRANSPORT,
+            http_client=http_client,
+            exceptions_module=f"{package_name}.{_SHARED}.exceptions",
         ),
         f"{_SHARED}/serialization.py": render_serialization(
             read_security_schemes(spec)

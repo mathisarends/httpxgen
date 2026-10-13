@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 008 — Wrap binary stream read failures
+
+- Buffered and streaming binary reads now raise `TransportError`, preserving the original cause and exception chain.
+- Consumer exceptions and cancellation remain unchanged; response cleanup still runs.
+- Added mid-download failure regressions and regenerated the preview.
+
 ### Ticket 007 — Close streaming responses on cancellation
 
 - Put the entire entered response lifetime under unconditional async context cleanup, including validation and error-body reads before yield.

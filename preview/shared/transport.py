@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from email.message import Message
 from typing import Any, BinaryIO, Protocol, runtime_checkable
 
+from preview.shared.exceptions import ClientError, TransportError
+
 type BinaryContent = bytes | Iterable[bytes] | AsyncIterable[bytes]
 
 
@@ -76,8 +78,14 @@ class BinaryStream:
         self.content_length = _content_length(response.headers)
         self.filename = _filename(response.headers)
 
-    def iter_bytes(self, chunk_size: int | None = None) -> AsyncIterator[bytes]:
-        return self._response.aiter_bytes(chunk_size=chunk_size)
+    async def iter_bytes(self, chunk_size: int | None = None) -> AsyncIterator[bytes]:
+        try:
+            async for chunk in self._response.aiter_bytes(chunk_size=chunk_size):
+                yield chunk
+        except ClientError:
+            raise
+        except Exception as error:
+            raise TransportError(error) from error
 
 
 def _header(headers: Mapping[str, str], name: str) -> str | None:

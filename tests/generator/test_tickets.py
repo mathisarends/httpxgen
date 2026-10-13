@@ -10,6 +10,66 @@ import pytest
 from httpxgen import OpenAPISpec, write_client
 
 
+@pytest.mark.parametrize("streaming", [False, True])
+def test_008_stream_read_failures_are_transport_errors(tmp_path, streaming):
+    paths = {
+        "/item": {
+            "get": {
+                "operationId": "getItem",
+                "responses": {"200": {"content": {"application/octet-stream": {}}}},
+            }
+        }
+    }
+    with generated(tmp_path, paths) as package:
+        failure = httpx.ReadError("lost mid-download")
+
+        class BrokenStream(httpx.AsyncByteStream):
+            closes = 0
+
+            async def __aiter__(self):
+                yield b"first"
+                raise failure
+
+            async def aclose(self):
+                self.closes += 1
+
+        stream = BrokenStream()
+        response = httpx.Response(
+            200, stream=stream, headers={"Content-Type": "application/octet-stream"}
+        )
+
+        async def action(client):
+            if streaming:
+                async with client.stream_get_item() as result:
+                    async for _ in result.iter_bytes():
+                        pass
+            else:
+                await client.get_item()
+
+        with pytest.raises(package.TransportError) as caught:
+            invoke(package, action, lambda _: response)
+        assert isinstance(caught.value, package.ClientError)
+        assert caught.value.cause is failure
+        assert caught.value.__cause__ is failure
+        assert response.is_closed
+        assert stream.closes == 1
+
+        async def consumer_error(client):
+            async with client.stream_get_item():
+                raise ValueError("consumer")
+
+        with pytest.raises(ValueError, match="consumer"):
+            invoke(
+                package,
+                consumer_error,
+                lambda _: httpx.Response(
+                    200,
+                    content=b"data",
+                    headers={"Content-Type": "application/octet-stream"},
+                ),
+            )
+
+
 @pytest.mark.parametrize("status", [200, 500])
 def test_007_cancelled_stream_closes_response(tmp_path, status):
     paths = {

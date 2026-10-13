@@ -362,7 +362,8 @@ await http_client.aclose()
 ```
 
 All operation failures derive from `ClientError`. `TransportError` retains its
-original `cause`, `ResponseValidationError` retains both the response and cause,
+original `cause`, including failures during binary iteration.
+`ResponseValidationError` retains both the response and cause,
 and `ApiError` exposes a parsed `detail` plus convenient `code` and `message`
 properties. `body` and `parsed_body` remain compatibility aliases for
 `raw_body` and `detail`.
