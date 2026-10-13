@@ -14,6 +14,93 @@ from httpxgen import OpenAPISpec, write_client
 from httpxgen.generator import GenerationError
 
 
+@pytest.mark.parametrize("version", ["3.0.3", "3.1.0"])
+def test_013_nullable_component_references(tmp_path, version):
+    thing = {
+        "type": "object",
+        "required": ["id"],
+        "properties": {"id": {"type": "integer", "minimum": 1}},
+    }
+    if version.startswith("3.0"):
+        thing["nullable"] = True
+    else:
+        thing["type"] = ["object", "null"]
+    schemas = {
+        "Thing": thing,
+        "MaybeThing": {"$ref": "#/components/schemas/Thing"},
+        "Parent": {
+            "type": "object",
+            "required": ["thing"],
+            "properties": {"thing": {"$ref": "#/components/schemas/Thing"}},
+        },
+    }
+    paths = {
+        "/item": {
+            "put": {
+                "operationId": "putItem",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/MaybeThing"}
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Thing"}
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    }
+    with generated(tmp_path, paths, schemas, openapi=version) as package:
+        assert package.Parent.model_validate({"thing": None}).thing is None
+        seen, result = invoke(
+            package,
+            lambda client: client.put_item(None),
+            lambda _: httpx.Response(
+                200, content=b"null", headers={"Content-Type": "application/json"}
+            ),
+        )
+        assert result is None
+        assert seen[0].content == b"null"
+        body = package.Thing(id=1)
+        _, result = invoke(
+            package,
+            lambda client: client.put_item(body),
+            lambda _: httpx.Response(200, json={"id": 1}),
+        )
+        assert result.id == 1
+        for invalid in [{}, {"id": 0}]:
+            with pytest.raises(package.ResponseValidationError):
+                invoke(
+                    package,
+                    lambda client: client.put_item(body),
+                    lambda _, invalid=invalid: httpx.Response(200, json=invalid),
+                )
+
+    if version.startswith("3.0"):
+        del thing["type"]
+        with (
+            generated(tmp_path / "untyped", paths, schemas, openapi=version) as package,
+            pytest.raises(package.ResponseValidationError),
+        ):
+            invoke(
+                package,
+                lambda client: client.put_item(package.Thing(id=1)),
+                lambda _: httpx.Response(
+                    200,
+                    content=b"null",
+                    headers={"Content-Type": "application/json"},
+                ),
+            )
+
+
 @pytest.mark.parametrize("required", [False, True])
 @pytest.mark.parametrize("variants", [False, True])
 @pytest.mark.parametrize("explode", [False, True])

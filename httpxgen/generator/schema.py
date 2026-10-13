@@ -4,16 +4,21 @@ from typing import Any
 from httpxgen.generator.naming import class_name, string_literal
 
 
-def schema_type(schema: Mapping[str, Any]) -> str:
+def schema_type(
+    schema: Mapping[str, Any], schemas: Mapping[str, Any] | None = None
+) -> str:
     if "$ref" in schema:
         annotation = class_name(
             schema["$ref"].rsplit("/", 1)[-1].replace("~1", "/").replace("~0", "~")
         )
-        return f"{annotation} | None" if schema.get("nullable") is True else annotation
+        nullable = allows_none(schema) or _reference_allows_none(
+            schema, schemas or {}, set()
+        )
+        return f"{annotation} | None" if nullable else annotation
 
     variants = schema.get("oneOf") or schema.get("anyOf")
     if variants:
-        variant_types = [schema_type(item) for item in variants]
+        variant_types = [schema_type(item, schemas) for item in variants]
         annotation = " | ".join(variant_types)
         if "oneOf" in schema and not schema.get("discriminator"):
             adapters = ", ".join(variant_types)
@@ -31,12 +36,14 @@ def schema_type(schema: Mapping[str, Any]) -> str:
     if isinstance(raw_type, list):
         nullable = nullable or "null" in raw_type
         types = [item for item in raw_type if item != "null"]
-        annotation = " | ".join(_plain_type(item, schema) for item in types) or "None"
+        annotation = (
+            " | ".join(_plain_type(item, schema, schemas) for item in types) or "None"
+        )
         return (
             f"{annotation} | None" if nullable and annotation != "None" else annotation
         )
 
-    annotation = _plain_type(raw_type, schema)
+    annotation = _plain_type(raw_type, schema, schemas)
     return f"{annotation} | None" if nullable and annotation != "None" else annotation
 
 
@@ -95,13 +102,29 @@ def allows_none(schema: Mapping[str, Any]) -> bool:
     )
 
 
-def _plain_type(raw_type: Any, schema: Mapping[str, Any]) -> str:
+def _reference_allows_none(
+    schema: Mapping[str, Any], schemas: Mapping[str, Any], seen: set[str]
+) -> bool:
+    reference = schema.get("$ref")
+    if not isinstance(reference, str) or reference in seen:
+        return False
+    seen.add(reference)
+    name = reference.rsplit("/", 1)[-1].replace("~1", "/").replace("~0", "~")
+    target = schemas.get(name, {})
+    return allows_none(target) or _reference_allows_none(target, schemas, seen)
+
+
+def _plain_type(
+    raw_type: Any, schema: Mapping[str, Any], schemas: Mapping[str, Any] | None = None
+) -> str:
     if raw_type == "array":
-        return f"list[{schema_type(schema.get('items', {}))}]"
+        return f"list[{schema_type(schema.get('items', {}), schemas)}]"
     if raw_type == "object" or "properties" in schema:
         additional = schema.get("additionalProperties")
         value_type = (
-            schema_type(additional) if isinstance(additional, Mapping) else "Any"
+            schema_type(additional, schemas)
+            if isinstance(additional, Mapping)
+            else "Any"
         )
         return f"dict[str, {value_type}]"
     return {

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 013 — Preserve nullable component references
+
+- Carry effective nullability through component references, aliases, nested fields, and request/response annotations while keeping object validation intact.
+- Validate nullable object responses through a nullable adapter; ignore OpenAPI 3.0 nullable annotations without an explicit type.
+- Added generated-client regressions for valid 3.0/3.1 schemas, null/non-null values, required properties, and constraints.
+
 ### Ticket 012 — Respect URL-encoded body encodings
 
 - Honor per-property array explode/style and JSON content encoding, with JSON defaults for structured values and explicit form serialization for flat objects.
