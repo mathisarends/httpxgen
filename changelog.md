@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 022 — Model leading-underscore properties
+
+- Give leading-underscore schema properties public Python names with explicit wire aliases, retaining required/type/constraint validation.
+- Reject collisions introduced by the prefix policy.
+- Added runtime regressions for additional-property allow/forbid models and regenerated the preview.
+
 ### Ticket 021 — Normalize protected/private query fields
 
 - Prefix protected `model_` query names and leading-underscore names with safe public field names throughout signatures, models, construction, and access.
