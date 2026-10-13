@@ -10,6 +10,57 @@ import pytest
 from httpxgen import OpenAPISpec, write_client
 
 
+@pytest.mark.parametrize("status", [200, 500])
+def test_007_cancelled_stream_closes_response(tmp_path, status):
+    paths = {
+        "/item": {
+            "get": {
+                "operationId": "getItem",
+                "responses": {
+                    "200": {"content": {"application/octet-stream": {}}},
+                    "500": {},
+                },
+            }
+        }
+    }
+    with generated(tmp_path, paths) as package:
+
+        async def exercise():
+            reading = asyncio.Event()
+
+            class WaitingStream(httpx.AsyncByteStream):
+                closes = 0
+
+                async def __aiter__(self):
+                    reading.set()
+                    await asyncio.Event().wait()
+                    yield b"unreachable"
+
+                async def aclose(self):
+                    self.closes += 1
+
+            stream = WaitingStream()
+            response = httpx.Response(
+                status,
+                stream=stream,
+                headers={"Content-Type": "application/octet-stream"},
+            )
+            async with httpx.AsyncClient(
+                transport=httpx.MockTransport(lambda _: response)
+            ) as transport:
+                client = package.TicketApiClient(transport, "https://example.test")
+                task = asyncio.create_task(client.get_item())
+                await asyncio.wait_for(reading.wait(), timeout=2)
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+                assert response.is_closed
+                assert stream.closes == 1
+                assert not transport.is_closed
+
+        asyncio.run(exercise())
+
+
 @contextmanager
 def generated(tmp_path, paths, schemas=None, **spec_options):
     spec = OpenAPISpec.model_validate(

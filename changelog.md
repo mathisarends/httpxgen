@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 007 — Close streaming responses on cancellation
+
+- Put the entire entered response lifetime under unconditional async context cleanup, including validation and error-body reads before yield.
+- Preserve cancellation unchanged and keep the borrowed transport open.
+- Added cancellation regressions before/after yield that verify response closure exactly once.
+
 ### Ticket 006 — Support mixed binary success responses
 
 - Preserve every declared successful representation in buffered and streaming methods, including JSON/text alongside binary content and empty 204 responses.
