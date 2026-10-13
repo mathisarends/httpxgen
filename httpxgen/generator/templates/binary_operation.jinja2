@@ -22,32 +22,27 @@
         except Exception as error:
             raise RequestValidationError(error) from error
 
-        response_stack = AsyncExitStack()
-        try:
-            response_context = self._client.stream(
+        async with AsyncExitStack() as response_stack:
+            try:
+                response_context = self._client.stream(
 {% for argument in request_arguments %}
-                {{ argument }},
+                    {{ argument }},
 {% endfor %}
-            )
-            response = await response_stack.enter_async_context(response_context)
-        except ClientError:
-            raise
-        except Exception as error:
-            raise TransportError(error) from error
+                )
+                response = await response_stack.enter_async_context(response_context)
+            except ClientError:
+                raise
+            except Exception as error:
+                raise TransportError(error) from error
 
-        try:
-{{ response_handling }}
-        except ClientError:
-            await response_stack.aclose()
-            raise
-        except Exception as error:
-            await response_stack.aclose()
-            validation_error = ResponseValidationError(
-                response.status_code, response, error
-            )
-            raise validation_error from error
+            try:
+{{ response_handling | indent(4, true) }}
+            except ClientError:
+                raise
+            except Exception as error:
+                validation_error = ResponseValidationError(
+                    response.status_code, response, error
+                )
+                raise validation_error from error
 
-        try:
             yield stream_result
-        finally:
-            await response_stack.aclose()

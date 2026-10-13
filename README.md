@@ -345,6 +345,7 @@ print(recording.media_type, recording.content_length, recording.filename)
 ```
 
 The streaming context owns the individual response only. The generated wrapper
+closes entered responses even when validation or reading is cancelled, and
 treats its injected HTTP client as borrowed, so closing the wrapper does not
 close a shared application transport:
 
