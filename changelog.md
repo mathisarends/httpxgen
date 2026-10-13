@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Ticket 032 — Allow required properties with default annotations
+
+- Permit required/default combinations while retaining presence validation; preserve the default as JSON Schema metadata rather than an automatic model fallback.
+- Keep optional-default behavior and replace the old rejection test with supported generation and runtime presence checks.
+
 ### Ticket 031 — Treat data $ref keys as data
 
 - Share an OpenAPI-context walker for reference validation, rewriting, dependency analysis, and version-specific normalization.

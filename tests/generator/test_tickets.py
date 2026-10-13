@@ -16,6 +16,45 @@ from httpxgen.generator.normalize import normalize_inline_schemas
 from httpxgen.selection import filter_operations_by_tags
 
 
+def test_032_required_defaults_do_not_supply_missing_fields(tmp_path):
+    shape = {
+        "type": "object",
+        "required": ["count"],
+        "properties": {
+            "count": {"type": "integer", "default": 1},
+            "optional": {"type": "integer", "default": 2},
+        },
+    }
+    content = {"application/json": {"schema": {"$ref": "#/components/schemas/Item"}}}
+    paths = {
+        "/item": {
+            "post": {
+                "operationId": "createItem",
+                "requestBody": {"required": True, "content": content},
+                "responses": {"200": {"content": content}},
+            }
+        }
+    }
+    with generated(tmp_path, paths, {"Item": shape}) as package:
+        assert package.Item.model_fields["count"].is_required()
+        assert package.Item.model_json_schema()["properties"]["count"]["default"] == 1
+        with pytest.raises(package.RequestValidationError):
+            invoke(package, lambda client: client.create_item({}))
+        with pytest.raises(package.ResponseValidationError):
+            invoke(
+                package,
+                lambda client: client.create_item({"count": 1}),
+                lambda _: httpx.Response(200, json={}),
+            )
+        seen, result = invoke(
+            package,
+            lambda client: client.create_item({"count": 1}),
+            lambda _: httpx.Response(200, json={"count": 1}),
+        )
+        assert json.loads(seen[0].content) == {"count": 1, "optional": 2}
+        assert result.count == 1
+
+
 @pytest.mark.parametrize("version", ["3.0.3", "3.1.0"])
 def test_031_examples_survive_normalization_and_canonicalization(version):
     payload = {"$ref": "#/components/schemas/ApiError", "sibling": 42}

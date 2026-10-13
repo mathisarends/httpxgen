@@ -385,9 +385,6 @@ def _validate_schema_semantics(schemas: dict[str, dict[str, Any]]) -> None:
             _validate_default(effective, location)
         properties = effective.get("properties", {})
         if isinstance(properties, dict):
-            required = effective.get("required", [])
-            if isinstance(required, list):
-                _validate_required_defaults(properties, required, location)
             for name, child in properties.items():
                 visit(child, f"{location}.{name}", seen)
         if isinstance(effective.get("items"), dict):
@@ -398,21 +395,6 @@ def _validate_schema_semantics(schemas: dict[str, dict[str, Any]]) -> None:
 
     for name, schema in schemas.items():
         visit(schema, name)
-
-
-def _validate_required_defaults(
-    properties: dict[str, Any], required: list[Any], location: str
-) -> None:
-    """A required property can never fall back to its default."""
-    for name in required:
-        child = properties.get(name)
-        # A discriminator const is written into required by normalization and
-        # carries no default, so only an authored default reaches this.
-        if isinstance(child, dict) and "default" in child:
-            raise GenerationError(
-                f"{location}.{name}: property is required and also declares a "
-                "default; drop one of the two"
-            )
 
 
 def _validate_default(schema: dict[str, Any], location: str) -> None:
