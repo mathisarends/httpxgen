@@ -47,7 +47,8 @@ def write_client(
         )
     )
     output = _managed_output(package_dir, rendered)
-    changed = _changed_files(package_dir, output)
+    obsolete = _obsolete_files(package_dir, rendered)
+    changed = _changed_files(package_dir, output) + obsolete
 
     if check:
         if changed:
@@ -59,6 +60,8 @@ def write_client(
         path = package_dir / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
+    for path in obsolete:
+        path.unlink()
     return changed
 
 
@@ -74,6 +77,12 @@ def _managed_output(package_dir: Path, rendered: Mapping[str, str]) -> dict[str,
     output: dict[str, str] = {}
     for relative, content in rendered.items():
         path = package_dir / relative
+        if path.is_symlink() or not path.resolve().is_relative_to(
+            package_dir.resolve()
+        ):
+            raise GenerationError(
+                f"refusing to write through a linked output path: {path}"
+            )
         if not path.exists() or _is_generated(path) or path.read_text() == content:
             output[relative] = content
         elif not _is_preserved(relative):
@@ -82,4 +91,20 @@ def _managed_output(package_dir: Path, rendered: Mapping[str, str]) -> dict[str,
 
 
 def _is_generated(path: Path) -> bool:
-    return path.read_text().startswith(GENERATED_HEADER)
+    try:
+        return path.read_text().startswith(GENERATED_HEADER)
+    except (OSError, UnicodeError):
+        return False
+
+
+def _obsolete_files(package_dir: Path, rendered: Mapping[str, str]) -> list[Path]:
+    root = package_dir.resolve()
+    return sorted(
+        path
+        for path in package_dir.rglob("*")
+        if path.is_file()
+        and not path.is_symlink()
+        and path.resolve().is_relative_to(root)
+        and path.relative_to(package_dir).as_posix() not in rendered
+        and _is_generated(path)
+    )

@@ -617,6 +617,11 @@ pagination, and a synchronous client.
 
 ## Development
 
+Regeneration removes obsolete modules carrying the generator header inside the
+output package; `--check` reports them without changing files. Handwritten files
+and unmanaged `__init__.py`/`py.typed` files are preserved. Linked output paths
+are rejected instead of writing outside the package.
+
 ```sh
 uv sync --all-groups
 uv run pytest
