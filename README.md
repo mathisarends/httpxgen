@@ -528,6 +528,9 @@ client-check:
 
 ## Supported scope
 
+Dot-valued path identifiers (`.` and `..`) are percent-encoded to preserve the
+route boundary instead of allowing URL dot-segment normalization.
+
 httpxgen targets ordinary OpenAPI 3.0 and 3.1 client specifications, not every
 JSON Schema feature. It supports JSON/YAML input, local component references,
 path/query/header/cookie serialization, JSON/form/multipart/binary request

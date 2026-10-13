@@ -236,3 +236,54 @@ def test_004_arguments_do_not_overwrite_generated_locals(tmp_path):
         assert seen[0].url.params["body_arguments"] == "body"
         assert seen[0].url.params["serialize_query"] == "serializer"
         assert b"upload-content" in seen[0].content
+
+
+@pytest.mark.parametrize(
+    "value,encoded",
+    [
+        (".", "%2E"),
+        ("..", "%2E%2E"),
+        ("a/b", "a%2Fb"),
+        ("%", "%25"),
+        ("ordinary.id", "ordinary.id"),
+    ],
+)
+@pytest.mark.parametrize("tail", ["", "/delete"])
+@pytest.mark.parametrize("streaming", [False, True])
+def test_005_path_segment_boundaries(tmp_path, value, encoded, tail, streaming):
+    path = "/items/{id}" + tail
+    paths = {
+        path: {
+            "get": {
+                "operationId": "getItem",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                "responses": {"200": {"content": {"application/octet-stream": {}}}},
+            }
+        }
+    }
+    with generated(tmp_path, paths) as package:
+
+        async def action(client):
+            if streaming:
+                async with client.stream_get_item(value) as response:
+                    return b"".join([chunk async for chunk in response.iter_bytes()])
+            return await client.get_item(value)
+
+        seen, result = invoke(
+            package,
+            action,
+            lambda _: httpx.Response(
+                200,
+                content=b"data",
+                headers={"Content-Type": "application/octet-stream"},
+            ),
+        )
+        assert seen[0].url.raw_path == f"/items/{encoded}{tail}".encode()
+        assert result == b"data"

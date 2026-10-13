@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Ticket 005 — Preserve dot-valued path segments
+
+- Encode standalone dot segments so HTTPX preserves the intended route.
+- Added wire-URL regressions for interior/trailing identifiers, buffered/streaming methods, dots, slashes, percent signs, and ordinary values; regenerated the preview.
+
 ### Ticket 004 — Avoid operation argument/local collisions
 
 - Disambiguate API parameter and multipart argument names that collide with generated locals or serialization helpers using an `_arg` suffix, preserving wire names.
