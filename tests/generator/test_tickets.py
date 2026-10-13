@@ -971,6 +971,118 @@ def test_028_binary_response_headers_are_typed_and_validated(tmp_path, streaming
         assert malformed.is_closed
 
 
+@pytest.mark.parametrize("streaming", [False, True])
+def test_empty_response_headers_in_binary_operations(tmp_path, streaming):
+    paths = {
+        "/item": {
+            "get": {
+                "operationId": "getItem",
+                "responses": {
+                    "200": {"content": {"application/octet-stream": {}}},
+                    "204": {
+                        "headers": {"X-Count": {"schema": {"type": "integer"}}},
+                    },
+                },
+            }
+        }
+    }
+    with generated(tmp_path, paths) as package:
+
+        async def action(client):
+            if not streaming:
+                return await client.get_item()
+            async with client.stream_get_item() as result:
+                return result
+
+        for headers, expected in [({"X-Count": "7"}, 7), ({}, None)]:
+            response = httpx.Response(204, headers=headers)
+            _, result = invoke(package, action, lambda _, response=response: response)
+            assert isinstance(result, package.GetItemResult204)
+            assert result.body is None
+            assert result.x_count == expected
+            assert response.is_closed
+
+        malformed = httpx.Response(204, headers={"X-Count": "not-an-int"})
+        with pytest.raises(package.ResponseValidationError):
+            invoke(package, action, lambda _: malformed)
+        assert malformed.is_closed
+
+
+@pytest.mark.parametrize("mode", ["json", "binary", "stream"])
+@pytest.mark.parametrize("shape", ["inline", "reference", "alias", "nullable"])
+def test_array_response_headers_keep_constraints(tmp_path, mode, shape):
+    array = {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 3,
+        "items": {"type": "integer", "minimum": 0},
+    }
+    schemas = {}
+    schema = array
+    if shape in {"reference", "alias"}:
+        schemas["Counts"] = array
+        schema = {"$ref": "#/components/schemas/Counts"}
+        if shape == "alias":
+            schemas["CountsAlias"] = schema
+            schema = {"$ref": "#/components/schemas/CountsAlias"}
+    elif shape == "nullable":
+        schema = {**array, "type": ["array", "null"]}
+    content = (
+        {"application/json": {"schema": {"type": "string"}}}
+        if mode == "json"
+        else {"application/octet-stream": {}}
+    )
+    paths = {
+        "/item": {
+            "get": {
+                "operationId": "getItem",
+                "responses": {
+                    "200": {
+                        "content": content,
+                        "headers": {
+                            "X-Counts": {"schema": schema},
+                            "X-Label": {"schema": {"type": "string"}},
+                        },
+                    }
+                },
+            }
+        }
+    }
+    with generated(tmp_path, paths, schemas) as package:
+
+        async def action(client):
+            if mode != "stream":
+                return await client.get_item()
+            async with client.stream_get_item() as result:
+                data = b"".join([chunk async for chunk in result.body.iter_bytes()])
+                return package.GetItemResult200(
+                    body=data, x_counts=result.x_counts, x_label=result.x_label
+                )
+
+        def response(counts):
+            headers = {"X-Label": "keep,the,commas"}
+            if counts is not None:
+                headers["X-Counts"] = counts
+            if mode == "json":
+                return httpx.Response(200, json="ok", headers=headers)
+            headers["Content-Type"] = "application/octet-stream"
+            return httpx.Response(200, content=b"ok", headers=headers)
+
+        for value, expected in [("1,2", [1, 2]), (None, None)]:
+            valid = response(value)
+            _, result = invoke(package, action, lambda _, valid=valid: valid)
+            assert result.x_counts == expected
+            assert result.x_label == "keep,the,commas"
+            assert result.body == ("ok" if mode == "json" else b"ok")
+            assert valid.is_closed
+
+        for value in ["1", "1,2,3,4", "1,bad", "-1,2"]:
+            malformed = response(value)
+            with pytest.raises(package.ResponseValidationError):
+                invoke(package, action, lambda _, malformed=malformed: malformed)
+            assert malformed.is_closed
+
+
 @pytest.mark.parametrize("required", [False, True])
 @pytest.mark.parametrize("binary", [False, True])
 def test_027_invalid_media_choices_fail_before_transport(tmp_path, required, binary):

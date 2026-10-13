@@ -80,6 +80,7 @@ class ResponseHeader:
     name: str
     wire_name: str
     annotation: str
+    is_array: bool = False
 
 
 @dataclass(frozen=True)
@@ -688,6 +689,7 @@ def _read_response_headers(
                 name=_header_identifier(wire_name),
                 wire_name=wire_name,
                 annotation=schema_type(header.schema_, spec.components.schemas),
+                is_array=_response_header_is_array(header.schema_, spec),
             )
         )
     names = [header.name for header in headers]
@@ -696,6 +698,22 @@ def _read_response_headers(
             f"{method.upper()} {path} has response header names that collide in Python"
         )
     return tuple(headers)
+
+
+def _response_header_is_array(schema: Mapping[str, Any], spec: OpenAPISpec) -> bool:
+    seen: set[str] = set()
+    while "$ref" in schema:
+        reference = schema["$ref"]
+        if reference in seen:
+            raise GenerationError(
+                f"cyclic response header schema reference: {reference}"
+            )
+        seen.add(reference)
+        schema = _resolve_component(reference, "schemas", spec.components.schemas)
+    raw_type = schema.get("type")
+    return raw_type == "array" or (
+        isinstance(raw_type, list) and set(raw_type) == {"array", "null"}
+    )
 
 
 def _header_identifier(value: str) -> str:
