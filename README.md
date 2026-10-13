@@ -553,6 +553,10 @@ client-check:
 
 ## Supported scope
 
+Recursive array and `anyOf` aliases use lazy Python 3.12+ type aliases, including
+mutual recursion. Recursive nondiscriminated `oneOf` and reference-only aliases are rejected with
+an actionable error; ordinary aliases and recursive object models stay readable.
+
 Exact `oneOf` membership uses JSON types without string/number/boolean coercion.
 Formatted date/UUID strings remain valid, and mathematically integral JSON
 numbers count as integers. Zero or multiple matching branches are rejected.

@@ -125,6 +125,26 @@ def ordered_schemas(schemas: Mapping[str, Any]) -> list[str]:
     return result
 
 
+def recursive_schema_names(schemas: Mapping[str, Any]) -> set[str]:
+    graph = {
+        name: schema_dependencies(schema) & schemas.keys()
+        for name, schema in schemas.items()
+    }
+    recursive = set()
+    for name in schemas:
+        pending = list(graph[name])
+        seen = set()
+        while pending:
+            dependency = pending.pop()
+            if dependency == name:
+                recursive.add(name)
+                break
+            if dependency not in seen:
+                seen.add(dependency)
+                pending.extend(graph[dependency])
+    return recursive
+
+
 def is_object(schema: Mapping[str, Any]) -> bool:
     return schema.get("type") == "object" or "properties" in schema
 
