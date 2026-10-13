@@ -37,6 +37,10 @@ def serialize_json_part(value: Any, annotation: Any) -> str:
     return TypeAdapter(annotation).dump_json(value, by_alias=True).decode()
 
 
+def serialize_json_parameter(value: Any, annotation: Any) -> str:
+    return json.dumps(serialize_json_body(value, annotation), separators=(",", ":"))
+
+
 def serialize_form_body(
     value: Any, annotation: Any, encodings: Mapping[str, Mapping[str, Any]]
 ) -> bytes:

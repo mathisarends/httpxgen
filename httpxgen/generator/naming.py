@@ -79,6 +79,7 @@ _OPERATION_LOCALS = {
     "serialize_query",
     "serialize_simple",
     "serialize_json_body",
+    "serialize_json_parameter",
     "upload_file_part",
 }
 

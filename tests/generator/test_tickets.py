@@ -3,9 +3,10 @@ import importlib
 import json
 import sys
 from contextlib import contextmanager
+from datetime import date
 from email import policy
 from email.parser import BytesParser
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, unquote
 
 import httpx
 import pytest
@@ -14,6 +15,137 @@ from httpxgen import OpenAPISpec, write_client
 from httpxgen.generator import GenerationError
 from httpxgen.generator.normalize import normalize_inline_schemas
 from httpxgen.selection import filter_operations_by_tags
+
+
+@pytest.mark.parametrize("location", ["query", "header", "path"])
+@pytest.mark.parametrize("reusable", [False, True])
+def test_042_json_parameter_content_preserves_one_value_and_aliases(
+    tmp_path, location, reusable
+):
+    schema = {
+        "type": "object",
+        "required": ["lat", "wire-long", "at"],
+        "properties": {
+            "lat": {"type": "number"},
+            "wire-long": {"type": "number"},
+            "at": {"type": "string", "format": "date"},
+        },
+    }
+    parameter = {
+        "name": "coordinates",
+        "in": location,
+        "required": True,
+        "content": {"application/json": {"schema": schema}},
+    }
+    parameters = (
+        [{"$ref": "#/components/parameters/Coordinates"}] if reusable else [parameter]
+    )
+    components = {"parameters": {"Coordinates": parameter}} if reusable else {}
+    path = "/run/{coordinates}" if location == "path" else "/run"
+    paths = {
+        path: {
+            "get": {
+                "operationId": "run",
+                "parameters": parameters,
+                "responses": {"204": {}},
+            }
+        }
+    }
+    with generated(tmp_path, paths, components=components) as package:
+        requests, _ = invoke(
+            package,
+            lambda client: client.run(
+                {"lat": 1, "wire-long": 2, "at": date(2026, 1, 2)}
+            ),
+        )
+        request = requests[0]
+        if location == "query":
+            assert set(request.url.params) == {"coordinates"}
+            encoded = request.url.params["coordinates"]
+        elif location == "header":
+            encoded = request.headers["coordinates"]
+        else:
+            encoded = unquote(request.url.raw_path.removeprefix(b"/run/").decode())
+            assert b"%7B" in request.url.raw_path
+        assert json.loads(encoded) == {"lat": 1, "wire-long": 2, "at": "2026-01-02"}
+        with pytest.raises(package.RequestValidationError):
+            invoke(package, lambda client: client.run({"lat": "invalid"}))
+
+
+@pytest.mark.parametrize("required", [False, True])
+def test_042_nullable_json_query_parameter_and_omission(tmp_path, required):
+    parameter = {
+        "name": "q",
+        "in": "query",
+        "required": required,
+        "content": {
+            "application/vendor+json": {"schema": {"type": ["string", "null"]}}
+        },
+    }
+    paths = {
+        "/run": {
+            "get": {
+                "operationId": "run",
+                "parameters": [parameter],
+                "responses": {"204": {}},
+            }
+        }
+    }
+    with generated(tmp_path, paths) as package:
+        requests, _ = invoke(package, lambda client: client.run(None))
+        assert requests[0].url.query == (b"q=null" if required else b"")
+        requests, _ = invoke(package, lambda client: client.run("a/b"))
+        assert json.loads(requests[0].url.params["q"]) == "a/b"
+
+
+@pytest.mark.parametrize(
+    ("location", "content", "options", "message"),
+    [
+        (
+            "cookie",
+            {"application/json": {"schema": {"type": "string"}}},
+            {},
+            "JSON cookie",
+        ),
+        (
+            "query",
+            {"text/plain": {"schema": {"type": "string"}}},
+            {},
+            "unsupported parameter media",
+        ),
+        (
+            "query",
+            {
+                "application/json": {"schema": {}},
+                "application/vendor+json": {"schema": {}},
+            },
+            {},
+            "exactly one",
+        ),
+        (
+            "query",
+            {"application/json": {"schema": {}}},
+            {"style": "form"},
+            "cannot be combined",
+        ),
+    ],
+)
+def test_042_unsupported_parameter_content_fails_before_output(
+    tmp_path, location, content, options, message
+):
+    parameter = {"name": "q", "in": location, "content": content, **options}
+    paths = {
+        "/run": {
+            "get": {
+                "operationId": "run",
+                "parameters": [parameter],
+                "responses": {"204": {}},
+            }
+        }
+    }
+    with pytest.raises(GenerationError, match=message), generated(tmp_path, paths):
+        pass
+    assert not (tmp_path / "ticket_api").exists()
 
 
 @pytest.mark.parametrize(

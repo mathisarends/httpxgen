@@ -93,9 +93,21 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
             return {"$ref": f"#/components/schemas/{name}", **siblings}
         return schema
 
+    def process_parameter(parameter: dict[str, Any], suggested: str) -> None:
+        if "schema" in parameter:
+            parameter["schema"] = process(
+                parameter["schema"], suggested, lift_root=True
+            )
+        for media in parameter.get("content", {}).values():
+            if "schema" in media:
+                media["schema"] = process(media["schema"], suggested, lift_root=True)
+
     for name in list(schemas):
         schemas[name] = process(schemas[name], name, lift_root=False)
 
+    for component_name, parameter in components.get("parameters", {}).items():
+        if "$ref" not in parameter:
+            process_parameter(parameter, f"{component_name}Parameter")
     for component_name, request_body in components.get("requestBodies", {}).items():
         if "$ref" not in request_body:
             for media in request_body.get("content", {}).values():
@@ -125,25 +137,19 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
 
     for path_item in document.get("paths", {}).values():
         for parameter in path_item.get("parameters", []):
-            if "schema" in parameter:
-                parameter["schema"] = process(
-                    parameter["schema"],
-                    f"{parameter.get('name', 'Parameter')}Parameter",
-                    lift_root=True,
-                )
+            process_parameter(
+                parameter, f"{parameter.get('name', 'Parameter')}Parameter"
+            )
         for method in HttpMethod:
             operation = path_item.get(method.value)
             if not operation:
                 continue
             operation_name = class_name(operation.get("operationId", method.value))
             for parameter in operation.get("parameters", []):
-                if "schema" in parameter:
-                    parameter_name = class_name(parameter.get("name", "Parameter"))
-                    parameter["schema"] = process(
-                        parameter["schema"],
-                        f"{operation_name}{parameter_name}Parameter",
-                        lift_root=True,
-                    )
+                parameter_name = class_name(parameter.get("name", "Parameter"))
+                process_parameter(
+                    parameter, f"{operation_name}{parameter_name}Parameter"
+                )
             request_body = operation.get("requestBody", {})
             if "$ref" not in request_body:
                 for media in request_body.get("content", {}).values():

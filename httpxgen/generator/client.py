@@ -126,7 +126,7 @@ def _render_client_imports(
     model_names: Sequence[str],
     layout: Layout,
 ) -> str:
-    typing_names = used_names(annotations, ("Annotated", "Literal"))
+    typing_names = used_names(annotations, ("Annotated", "Any", "Literal"))
     has_content_variants = any(
         len(_operation_bodies(operation)) > 1 for operation in operations
     )
@@ -225,6 +225,8 @@ def _serialization_helpers(operations: Sequence[Operation]) -> list[str]:
             helpers.add("apply_security")
         for parameter in operation.parameters:
             helpers.add(_SERIALIZERS[parameter.location])
+            if parameter.json_content:
+                helpers.add("serialize_json_parameter")
         if any(body.kind == "multipart" for body in _operation_bodies(operation)):
             helpers.add("scalar")
             if any(
@@ -245,6 +247,11 @@ def _serialization_helpers(operations: Sequence[Operation]) -> list[str]:
 def _needs_type_adapter(operations: Sequence[Operation]) -> bool:
     return (
         any(operation.body for operation in operations)
+        or any(
+            parameter.json_content
+            for operation in operations
+            for parameter in operation.parameters
+        )
         or any(
             content.kind == "json" and content.model_annotation is None
             for operation in operations
@@ -994,6 +1001,13 @@ _SERIALIZERS = {
 
 
 def _serialize_call(parameter: Parameter, value: str) -> str:
+    if parameter.json_content:
+        value = f"serialize_json_parameter({value}, {parameter.annotation})"
+        if parameter.location == "query":
+            return f"[({string_literal(parameter.wire_name)}, {value})]"
+        if parameter.location == "path":
+            return f"serialize_path({string_literal(parameter.wire_name)}, {value})"
+        return value
     function = _SERIALIZERS[parameter.location]
     arguments = [value]
     if function == "serialize_simple":

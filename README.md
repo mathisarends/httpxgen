@@ -629,6 +629,12 @@ pagination, and a synchronous client.
 
 ## Development
 
+Parameter `content` supports one JSON/+json representation for query, header,
+and path positions. Values are validated and serialized as one compact JSON
+value with aliases and formatted fields. Required nullable parameters send JSON
+null; optional `None` omits the parameter. JSON cookie content and combinations
+with schema/style/explode/allowReserved are rejected during generation.
+
 Query `allowReserved: true` preserves `:/?@!$'()*,;` and valid percent-encoded
 triples in values. It escapes `[]#&=+`, stray percent signs, and other disallowed
 characters to preserve query boundaries and form decoding. Parameter names,

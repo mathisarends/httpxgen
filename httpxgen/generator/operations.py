@@ -41,6 +41,7 @@ class Parameter:
     default: Any = NO_DEFAULT
     constraints: tuple[tuple[str, Any], ...] = ()
     default_source: str | None = None
+    json_content: bool = False
 
 
 @dataclass(frozen=True)
@@ -253,9 +254,28 @@ def _read_parameters(
         required = value.required or value.location == "path"
         schema = value.schema_
         if value.content:
+            if len(value.content) != 1:
+                raise GenerationError(
+                    "parameter content must contain exactly one media type"
+                )
+            if (
+                value.schema_
+                or value.style is not None
+                or value.explode is not None
+                or value.allow_reserved
+            ):
+                raise GenerationError(
+                    "parameter content cannot be combined with "
+                    "schema/style/explode/allowReserved"
+                )
+            if value.location == "cookie":
+                raise GenerationError(
+                    "JSON cookie parameter content is unsupported; "
+                    "use a schema-style cookie parameter"
+                )
             schema, _, _ = _select_media(value.content, "parameter", kinds=("json",))
         annotation = schema_type(
-            schema, spec.components.schemas, include_constraints=False
+            schema, spec.components.schemas, include_constraints=bool(value.content)
         )
         if (
             not required
@@ -284,6 +304,7 @@ def _read_parameters(
                 default=schema.get("default", NO_DEFAULT),
                 constraints=_constraints(schema),
                 default_source=_parameter_default_source(schema, spec),
+                json_content=bool(value.content),
             )
         )
     return tuple(parameters)
