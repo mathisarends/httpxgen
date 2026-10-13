@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal
@@ -22,14 +23,26 @@ from pydantic import (
 from preview.shared.models import BaseEntity, Money
 
 
+def _json_schema_numbers(value: Any) -> Any:
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, list):
+        return [_json_schema_numbers(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _json_schema_numbers(item) for key, item in value.items()}
+    return value
+
+
 def _one_of(*variants: Any) -> BeforeValidator:
     adapters = [TypeAdapter(variant) for variant in variants]
 
     def validate(value: Any) -> Any:
+        json_value = json.loads(TypeAdapter(Any).dump_json(value, by_alias=True))
+        payload = json.dumps(_json_schema_numbers(json_value))
         matches = 0
         for adapter in adapters:
             try:
-                adapter.validate_python(value)
+                adapter.validate_json(payload, strict=True)
             except ValidationError:
                 continue
             matches += 1

@@ -170,6 +170,8 @@ def _render_model_imports(
     body: str, external: Sequence[tuple[str, Sequence[str]]] = ()
 ) -> str:
     lines: list[str] = []
+    if "json." in body:
+        lines.append("import json")
     datetime_names = used_names(body, ("date", "datetime"))
     typing_names = used_names(body, ("Annotated", "Any", "Literal"))
     pydantic_names = used_names(
@@ -491,14 +493,26 @@ def _render_field(
 
 
 _ONE_OF_VALIDATOR = """\
+def _json_schema_numbers(value: Any) -> Any:
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, list):
+        return [_json_schema_numbers(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _json_schema_numbers(item) for key, item in value.items()}
+    return value
+
+
 def _one_of(*variants: Any) -> BeforeValidator:
     adapters = [TypeAdapter(variant) for variant in variants]
 
     def validate(value: Any) -> Any:
+        json_value = json.loads(TypeAdapter(Any).dump_json(value, by_alias=True))
+        payload = json.dumps(_json_schema_numbers(json_value))
         matches = 0
         for adapter in adapters:
             try:
-                adapter.validate_python(value)
+                adapter.validate_json(payload, strict=True)
             except ValidationError:
                 continue
             matches += 1

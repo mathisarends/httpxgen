@@ -541,6 +541,10 @@ client-check:
 
 ## Supported scope
 
+Exact `oneOf` membership uses JSON types without string/number/boolean coercion.
+Formatted date/UUID strings remain valid, and mathematically integral JSON
+numbers count as integers. Zero or multiple matching branches are rejected.
+
 Query names beginning with `_` or `model_` receive a public `field`/`field_`
 prefix in generated signatures and query models. Their wire names and
 validation constraints remain intact.
