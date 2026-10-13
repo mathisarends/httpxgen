@@ -34,6 +34,8 @@ _RESERVED_NAMES = {
     "RequestValidationError",
     "TransportError",
     "UploadFile",
+    "UNSET",
+    "UnsetType",
     "UUID",
     "date",
     "datetime",

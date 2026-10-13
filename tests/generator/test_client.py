@@ -151,8 +151,8 @@ def test_render_client_does_not_create_params_for_an_operation_without_queries()
     assert "CreateChargeParams" not in source
     assert "params=" not in source
     assert "if body is not None" not in source
-    assert "json_body = serialize_json_body(" in source
-    assert "json=json_body," in source
+    assert 'body_arguments["json"] = serialize_json_body(' in source
+    assert "**body_arguments," in source
 
 
 def test_render_client_guards_optional_request_body_serialization():
@@ -179,9 +179,9 @@ def test_render_client_guards_optional_request_body_serialization():
         _LAYOUT,
     )
 
-    assert "body: UpdateCharge | None = None" in source
+    assert "body: UpdateCharge | UnsetType = UNSET" in source
     assert "body_arguments: dict[str, Any] = {}" in source
-    assert "if body is not None:" in source
+    assert "if body is not UNSET:" in source
     assert "**body_arguments," in source
 
 

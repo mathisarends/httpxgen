@@ -132,7 +132,9 @@ def _render_client_imports(
     if has_content_variants:
         typing_names.append("Literal")
     if has_content_variants or any(
-        _has_optional_body(operation) for operation in operations
+        _has_optional_body(operation)
+        or any(body.kind == "json" for body in _operation_bodies(operation))
+        for operation in operations
     ):
         typing_names.insert(0, "Any")
     typing_names.append("Self")
@@ -217,6 +219,8 @@ def _serialization_helpers(operations: Sequence[Operation]) -> list[str]:
             helpers.add("scalar")
         if any(body.kind == "json" for body in _operation_bodies(operation)):
             helpers.add("serialize_json_body")
+        if _uses_body_sentinel(operation):
+            helpers.update({"UNSET", "UnsetType"})
     return sorted(helpers)
 
 
@@ -259,7 +263,10 @@ def _render_operation(operation: Operation) -> str:
         annotation = operation.body_annotation
         default = ""
         if not operation.body_required:
-            annotation, default = f"{annotation} | None", " = None"
+            if _uses_body_sentinel(operation):
+                annotation, default = f"{annotation} | UnsetType", " = UNSET"
+            else:
+                annotation, default = f"{annotation} | None", " = None"
         arguments.append((f"body: {annotation}{default}", operation.body_required))
     arguments.sort(key=lambda item: not item[1])
     signature = "".join(f"        {value},\n" for value, _ in arguments)
@@ -490,13 +497,14 @@ def _render_body(operation: Operation) -> str:
     if not bodies:
         return ""
     body = bodies[0]
+    absent = "UNSET" if _uses_body_sentinel(operation) else "None"
     if body.kind == "multipart":
         return "".join(_render_multipart_body(body, _INDENT))
     if len(bodies) > 1:
         lines = [f"{_INDENT}body_arguments: dict[str, Any] = {{}}\n"]
         indent = _INDENT
         if not body.required:
-            lines.append(f"{_INDENT}if body is not None:\n")
+            lines.append(f"{_INDENT}if body is not {absent}:\n")
             indent += "    "
         for index, variant in enumerate(bodies):
             keyword = "if" if index == 0 else "elif"
@@ -511,7 +519,7 @@ def _render_body(operation: Operation) -> str:
 
     lines = [
         f"{_INDENT}body_arguments: dict[str, Any] = {{}}\n",
-        f"{_INDENT}if body is not None:\n",
+        f"{_INDENT}if body is not {absent}:\n",
     ]
     indent = f"{_INDENT}    "
     lines.extend(_render_body_variant(body, indent))
@@ -525,6 +533,8 @@ def _render_body_variant(body: Body, indent: str) -> list[str]:
             f'{indent}body_arguments["json"] = serialize_json_body(\n',
             f"{indent}    body, {body.annotation}{partial}\n",
             f"{indent})\n",
+            f'{indent}if body_arguments["json"] is None:\n',
+            f'{indent}    body_arguments = {{"content": b"null"}}\n',
         ]
     elif body.kind in {"form", "multipart"}:
         lines = [
@@ -564,11 +574,9 @@ def _render_body_variant(body: Body, indent: str) -> list[str]:
 
 def _render_required_body(body: Body) -> list[str]:
     if body.kind == "json":
-        partial = _json_omission_argument(body)
         return [
-            f"{_INDENT}json_body = serialize_json_body(\n",
-            f"{_INDENT}    body, {body.annotation}{partial}\n",
-            f"{_INDENT})\n",
+            f"{_INDENT}body_arguments: dict[str, Any] = {{}}\n",
+            *_render_body_variant(body, _INDENT),
         ]
     if body.kind == "form":
         return [
@@ -644,10 +652,8 @@ def _render_request_arguments(operation: Operation) -> list[str]:
     bodies = _operation_bodies(operation)
     if bodies:
         body = bodies[0]
-        if len(bodies) > 1 or not body.required:
+        if len(bodies) > 1 or not body.required or body.kind == "json":
             arguments.append("**body_arguments")
-        elif body.kind == "json":
-            arguments.append("json=json_body")
         elif body.kind == "form":
             arguments.append("data=form_data")
         elif body.kind == "multipart":
@@ -804,7 +810,7 @@ def _content_type_header(operation: Operation) -> str:
     body = bodies[0]
     if (
         body is None
-        or body.kind in {"form", "multipart"}
+        or body.kind in {"form", "multipart", "json"}
         or body.media_type.split(";", 1)[0].lower() == "application/json"
     ):
         return ""
@@ -854,9 +860,12 @@ def _operation_bodies(operation: Operation) -> tuple[Body, ...]:
 
 
 def _body_needs_content_type(body: Body) -> bool:
-    normalized = body.media_type.split(";", 1)[0].strip().lower()
-    return body.kind in {"text", "binary"} or (
-        body.kind == "json" and normalized != "application/json"
+    return body.kind in {"text", "binary", "json"}
+
+
+def _uses_body_sentinel(operation: Operation) -> bool:
+    return not operation.body_required and any(
+        body.kind == "json" for body in _operation_bodies(operation)
     )
 
 
