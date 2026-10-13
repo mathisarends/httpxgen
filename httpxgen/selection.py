@@ -11,6 +11,7 @@ from httpxgen.openapi import (
     PathItem,
     get_operation,
 )
+from httpxgen.references import COMPONENT_KINDS, reference_values, rewrite_references
 
 
 def filter_operations_by_tags(
@@ -88,8 +89,10 @@ def _referenced_components(
     components = spec.components.model_dump(by_alias=True, exclude_none=True)
     referenced = _component_references(
         {
-            path: item.model_dump(by_alias=True, exclude_none=True)
-            for path, item in paths.items()
+            "paths": {
+                path: item.model_dump(by_alias=True, exclude_none=True)
+                for path, item in paths.items()
+            }
         }
     )
     pending = list(referenced)
@@ -98,7 +101,10 @@ def _referenced_components(
         component = components.get(section, {}).get(name)
         if component is None:
             continue
-        for dependency in _component_references(component) - referenced:
+        for dependency in (
+            _component_references(component, COMPONENT_KINDS.get(section, "schema"))
+            - referenced
+        ):
             referenced.add(dependency)
             pending.append(dependency)
     return {
@@ -112,25 +118,13 @@ def _referenced_components(
     }
 
 
-def _component_references(value: Any) -> set[tuple[str, str]]:
-    if isinstance(value, dict):
-        references: set[tuple[str, str]] = set()
-        reference = value.get("$ref")
-        if isinstance(reference, str) and reference.startswith("#/components/"):
-            parts = reference.split("/", 3)
-            if len(parts) == 4:
-                references.add(
-                    (parts[2], parts[3].replace("~1", "/").replace("~0", "~"))
-                )
-        for item in value.values():
-            references.update(_component_references(item))
-        return references
-    if isinstance(value, (list, tuple)):
-        references = set()
-        for item in value:
-            references.update(_component_references(item))
-        return references
-    return set()
+def _component_references(value: Any, kind: str = "document") -> set[tuple[str, str]]:
+    result = set()
+    for reference in reference_values(value, kind, mappings=True):
+        parts = reference.split("/", 3)
+        if reference.startswith("#/components/") and len(parts) == 4:
+            result.add((parts[2], parts[3].replace("~1", "/").replace("~0", "~")))
+    return result
 
 
 def _canonicalize_schema_names(
@@ -156,29 +150,29 @@ def _canonicalize_schema_names(
     rewritten_paths = {
         path: PathItem.model_validate(
             _rewrite_references(
-                item.model_dump(by_alias=True, exclude_none=True), names
+                item.model_dump(by_alias=True, exclude_none=True), names, "path_item"
             )
         )
         for path, item in paths.items()
     }
     rewritten_schemas = {
-        names.get(name, name): _rewrite_references(schema, names)
+        names.get(name, name): _rewrite_references(schema, names, "schema")
         for name, schema in schemas.items()
     }
-    rewritten_components = _rewrite_references(components, names)
+    rewritten_components = _rewrite_references(components, names, "components")
     rewritten_components["schemas"] = rewritten_schemas
     return rewritten_paths, rewritten_components
 
 
-def _rewrite_references(value: Any, names: dict[str, str]) -> Any:
-    if isinstance(value, dict):
-        return {key: _rewrite_references(item, names) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_rewrite_references(item, names) for item in value]
-    if isinstance(value, tuple):
-        return tuple(_rewrite_references(item, names) for item in value)
-    prefix = "#/components/schemas/"
-    if isinstance(value, str) and value.startswith(prefix):
-        name = value.removeprefix(prefix)
-        return f"{prefix}{names.get(name, name)}"
-    return value
+def _rewrite_references(
+    value: Any, names: dict[str, str], kind: str = "document"
+) -> Any:
+    def transform(reference: str) -> str:
+        prefix = "#/components/schemas/"
+        if reference.startswith(prefix):
+            name = reference.removeprefix(prefix).replace("~1", "/").replace("~0", "~")
+            canonical = names.get(name, name).replace("~", "~0").replace("/", "~1")
+            return f"{prefix}{canonical}"
+        return names.get(reference, reference)
+
+    return rewrite_references(value, transform, kind)

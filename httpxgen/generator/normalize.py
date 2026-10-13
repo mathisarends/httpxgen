@@ -5,6 +5,12 @@ from httpxgen.generator.errors import GenerationError
 from httpxgen.generator.naming import class_name
 from httpxgen.generator.operations import resolve_path_item
 from httpxgen.openapi import HttpMethod, OpenAPISpec
+from httpxgen.references import (
+    REFERENCE_KINDS,
+    openapi_nodes,
+    reference_values,
+    rewrite_references,
+)
 
 
 def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
@@ -174,11 +180,9 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
 
 
 def _rewrite_reference(value: Any, old: str, new: str) -> Any:
-    if isinstance(value, dict):
-        return {key: _rewrite_reference(item, old, new) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_rewrite_reference(item, old, new) for item in value]
-    return new if value == old else value
+    return rewrite_references(
+        value, lambda reference: new if reference == old else reference
+    )
 
 
 def _mapping_reference(target: str) -> str:
@@ -282,49 +286,34 @@ def _normalize_discriminators(schemas: dict[str, dict[str, Any]]) -> None:
 
 def _validate_references(document: dict[str, Any]) -> None:
     components = document.get("components", {})
-
-    def visit(value: Any) -> None:
-        if isinstance(value, dict):
-            reference = value.get("$ref")
-            if isinstance(reference, str):
-                prefix = "#/components/"
-                if not reference.startswith(prefix):
-                    raise GenerationError(
-                        f"only local component references are supported: {reference}"
-                    )
-                section_and_name = reference.removeprefix(prefix).split("/", 1)
-                if len(section_and_name) != 2:
-                    raise GenerationError(f"invalid component reference: {reference}")
-                section, encoded_name = section_and_name
-                name = encoded_name.replace("~1", "/").replace("~0", "~")
-                if name not in components.get(section, {}):
-                    raise GenerationError(f"unresolved reference: {reference}")
-            for item in value.values():
-                visit(item)
-        elif isinstance(value, list):
-            for item in value:
-                visit(item)
-
-    visit(document)
+    for reference in reference_values(document):
+        prefix = "#/components/"
+        if not reference.startswith(prefix):
+            raise GenerationError(
+                f"only local component references are supported: {reference}"
+            )
+        section_and_name = reference.removeprefix(prefix).split("/", 1)
+        if len(section_and_name) != 2:
+            raise GenerationError(f"invalid component reference: {reference}")
+        section, encoded_name = section_and_name
+        name = encoded_name.replace("~1", "/").replace("~0", "~")
+        if name not in components.get(section, {}):
+            raise GenerationError(f"unresolved reference: {reference}")
 
 
 def _normalize_oas30_keywords(value: Any) -> None:
-    if isinstance(value, dict):
-        if "type" not in value:
-            value.pop("nullable", None)
-        if isinstance(value.get("exclusiveMinimum"), bool):
-            exclusive = value.pop("exclusiveMinimum")
-            if exclusive and "minimum" in value:
-                value["exclusiveMinimum"] = value.pop("minimum")
-        if isinstance(value.get("exclusiveMaximum"), bool):
-            exclusive = value.pop("exclusiveMaximum")
-            if exclusive and "maximum" in value:
-                value["exclusiveMaximum"] = value.pop("maximum")
-        for item in value.values():
-            _normalize_oas30_keywords(item)
-    elif isinstance(value, list):
-        for item in value:
-            _normalize_oas30_keywords(item)
+    for schema, kind in openapi_nodes(value):
+        if kind != "schema":
+            continue
+        if "type" not in schema:
+            schema.pop("nullable", None)
+        for suffix in ("Minimum", "Maximum"):
+            keyword = f"exclusive{suffix}"
+            if isinstance(schema.get(keyword), bool):
+                exclusive = schema.pop(keyword)
+                bound = suffix.lower()
+                if exclusive and bound in schema:
+                    schema[keyword] = schema.pop(bound)
 
 
 _REFERENCE_SIBLINGS = frozenset(
@@ -342,16 +331,11 @@ _REFERENCE_SIBLINGS = frozenset(
 
 
 def _collapse_reference_all_of(value: Any) -> None:
-    """Rewrite `allOf: [$ref]` plus annotations into `$ref` with siblings.
-
-    OpenAPI 3.0 forbids `$ref` siblings, so wrapping the reference in a
-    single-entry `allOf` is the only way to attach a `default` or a
-    `description` to it. That means the same thing as the 3.1 sibling form,
-    which is the shape the rest of the generator already works with.
-    """
-    if isinstance(value, dict):
-        all_of = value.get("allOf")
-        siblings = {key: item for key, item in value.items() if key != "allOf"}
+    for schema, kind in openapi_nodes(value):
+        if kind != "schema":
+            continue
+        all_of = schema.get("allOf")
+        siblings = {key: item for key, item in schema.items() if key != "allOf"}
         if (
             isinstance(all_of, list)
             and len(all_of) == 1
@@ -359,28 +343,16 @@ def _collapse_reference_all_of(value: Any) -> None:
             and set(all_of[0]) == {"$ref"}
             and set(siblings) <= _REFERENCE_SIBLINGS
         ):
-            value.clear()
-            value.update({"$ref": all_of[0]["$ref"], **siblings})
-            return
-        for item in value.values():
-            _collapse_reference_all_of(item)
-    elif isinstance(value, list):
-        for item in value:
-            _collapse_reference_all_of(item)
+            schema.clear()
+            schema.update({"$ref": all_of[0]["$ref"], **siblings})
 
 
 def _strip_oas30_reference_siblings(value: Any) -> None:
-    if isinstance(value, dict):
-        if "$ref" in value:
-            reference = value["$ref"]
-            value.clear()
-            value["$ref"] = reference
-            return
-        for item in value.values():
-            _strip_oas30_reference_siblings(item)
-    elif isinstance(value, list):
-        for item in value:
-            _strip_oas30_reference_siblings(item)
+    for node, kind in openapi_nodes(value):
+        if kind in REFERENCE_KINDS and "$ref" in node:
+            reference = node["$ref"]
+            node.clear()
+            node["$ref"] = reference
 
 
 def _validate_schema_semantics(schemas: dict[str, dict[str, Any]]) -> None:

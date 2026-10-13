@@ -12,7 +12,121 @@ import pytest
 
 from httpxgen import OpenAPISpec, write_client
 from httpxgen.generator import GenerationError
+from httpxgen.generator.normalize import normalize_inline_schemas
 from httpxgen.selection import filter_operations_by_tags
+
+
+@pytest.mark.parametrize("version", ["3.0.3", "3.1.0"])
+def test_031_examples_survive_normalization_and_canonicalization(version):
+    payload = {"$ref": "#/components/schemas/ApiError", "sibling": 42}
+    spec = OpenAPISpec.model_validate(
+        {
+            "openapi": version,
+            "components": {
+                "schemas": {
+                    "ApiError": {
+                        "title": "Thing",
+                        "type": "object",
+                        "example": payload,
+                        "examples": [payload],
+                        "properties": {"id": {"type": "string"}},
+                    }
+                }
+            },
+            "paths": {
+                "/item": {
+                    "post": {
+                        "operationId": "createItem",
+                        "tags": ["one"],
+                        "requestBody": {
+                            "required": True,
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ApiError"},
+                                    "example": payload,
+                                    "examples": {"item": {"value": payload}},
+                                }
+                            },
+                        },
+                        "responses": {"204": {}},
+                    }
+                }
+            },
+        }
+    )
+    for selected, name in [
+        (spec, "ApiErrorModel"),
+        (filter_operations_by_tags(spec, ["one"]), "Thing"),
+    ]:
+        normalized = normalize_inline_schemas(selected)
+        assert normalized.components.schemas[name]["example"] == payload
+        assert normalized.components.schemas[name]["examples"] == [payload]
+        media = (
+            normalized.paths["/item"]
+            .post.request_body.content["application/json"]
+            .model_dump(by_alias=True)
+        )
+        assert media["example"] == payload
+        assert media["examples"]["item"]["value"] == payload
+
+
+@pytest.mark.parametrize("version", ["3.0.3", "3.1.0"])
+@pytest.mark.parametrize("tagged", [False, True])
+def test_031_ref_keys_inside_data_are_preserved(tmp_path, version, tagged):
+    payload = {
+        "$ref": "document-id",
+        "keep": 1,
+        "nullable": True,
+        "exclusiveMinimum": True,
+        "minimum": 2,
+        "nested": [{"$ref": "#/components/schemas/RawThing", "keep": "data"}],
+    }
+    schema = {
+        "title": "Thing",
+        "type": "object",
+        "required": ["default"],
+        "example": payload,
+        "examples": [payload],
+        "properties": {
+            "default": {"$ref": "#/components/schemas/Text"},
+            "metadata": {"type": "object", "default": payload, "example": payload},
+        },
+    }
+    media = {
+        "schema": {"$ref": "#/components/schemas/RawThing"},
+        "example": payload,
+        "examples": {"data": {"value": payload}},
+    }
+    paths = {
+        "/item": {
+            "post": {
+                "operationId": "createItem",
+                "tags": ["one"],
+                "requestBody": {
+                    "required": True,
+                    "content": {"application/json": media},
+                },
+                "responses": {"204": {}},
+            }
+        }
+    }
+    schemas = {"RawThing": schema, "Text": {"type": "string", "minLength": 2}}
+    with generated(
+        tmp_path, paths, schemas, openapi=version, tags=["one"] if tagged else []
+    ) as package:
+        model = getattr(package, "Thing" if tagged else "RawThing")
+        body = model(default="valid")
+        assert body.metadata == payload
+        seen, _ = invoke(package, lambda client: client.create_item(body))
+        assert json.loads(seen[0].content) == {"default": "valid", "metadata": payload}
+        with pytest.raises(package.RequestValidationError):
+            invoke(package, lambda client: client.create_item({"default": "x"}))
+    schema["properties"]["default"] = {"$ref": "#/components/schemas/Missing"}
+    with (
+        pytest.raises(GenerationError, match="unresolved reference"),
+        generated(tmp_path / "invalid", paths, schemas, openapi=version),
+    ):
+        pass
 
 
 @pytest.mark.parametrize(
