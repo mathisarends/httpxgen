@@ -15,6 +15,24 @@ from httpxgen.generator import GenerationError
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize("name", ["__init__", "stream_download", "streamDownload"])
+def test_019_generated_method_collisions_fail_before_writes(tmp_path, name):
+    paths = {"/other": {"get": {"operationId": name, "responses": {"204": {}}}}}
+    if name != "__init__":
+        paths["/download"] = {
+            "get": {
+                "operationId": "download",
+                "responses": {"200": {"content": {"application/octet-stream": {}}}},
+            }
+        }
+    with (
+        pytest.raises(GenerationError, match="generated client methods"),
+        generated(tmp_path, paths),
+    ):
+        pass
+    assert not (tmp_path / "ticket_api").exists()
+
+
 @pytest.mark.parametrize(
     "wire,python_name",
     [

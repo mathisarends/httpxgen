@@ -40,7 +40,7 @@ _RESERVED_NAMES = {
     "date",
     "datetime",
 }
-_CLIENT_METHODS = {"aclose", "__aenter__", "__aexit__"}
+_CLIENT_METHODS = {"__init__", "__new__", "aclose", "__aenter__", "__aexit__"}
 _LINE_LENGTH = 88
 
 
@@ -66,8 +66,22 @@ def validate_package_names(
     ]
     generated_models = [*exported_models, *query_models, *response_models]
     _check_no_name_collisions(generated_models, client_name)
+    companions = {
+        f"stream_{operation.name}"
+        for operation in operations
+        if any(
+            response.success
+            and (
+                response.kind == "binary"
+                or any(content.kind == "binary" for content in response.contents)
+            )
+            for response in operation.responses
+        )
+    }
     method_conflicts = sorted(
-        _CLIENT_METHODS.intersection(operation.name for operation in operations)
+        (_CLIENT_METHODS | companions).intersection(
+            operation.name for operation in operations
+        )
     )
     if method_conflicts:
         raise GenerationError(
