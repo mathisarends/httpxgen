@@ -143,6 +143,8 @@ def _render_client_imports(
         collection_names.append("Sequence")
     if any(_has_binary_success(operation) for operation in operations):
         collection_names.append("AsyncIterator")
+        if "Any" not in typing_names:
+            typing_names.insert(0, "Any")
     lines = [f"from collections.abc import {', '.join(sorted(collection_names))}"]
     if any(_has_binary_success(operation) for operation in operations):
         lines.append("from contextlib import AsyncExitStack, asynccontextmanager")
@@ -318,6 +320,21 @@ def _render_operation(operation: Operation) -> str:
             f"            {name}={name},\n" for name in forwarded
         )
         stream_handling = _render_stream_response_handling(operation.responses)
+        nonbinary = [
+            response.result_annotation or content.annotation
+            for response in operation.responses
+            if response.success
+            for content in _response_contents(response)
+            if content.kind != "binary"
+        ]
+        if any(
+            response.success and not _response_contents(response)
+            for response in operation.responses
+        ):
+            nonbinary.append("None")
+        context["stream_annotation"] = " | ".join(
+            dict.fromkeys(["BinaryStream", *nonbinary])
+        )
         context["response_handling"] = "".join(
             f"    {line}" if line.strip() else line
             for line in stream_handling.splitlines(keepends=True)
@@ -334,41 +351,48 @@ def _has_binary_success(operation: Operation) -> bool:
 
 
 def _render_stream_response_handling(responses: Sequence[Response]) -> str:
-    lines = ["        binary_stream: BinaryStream | None = None\n"]
-    for response in responses:
-        if not response.success:
+    lines = ["        stream_result: Any = None\n"]
+    successes = [response for response in responses if response.success]
+    for index, response in enumerate(successes):
+        condition = _response_condition(response.status)
+        if index:
+            condition = "el" + condition
+        lines.append(f"        {condition}:\n")
+        contents = _response_contents(response)
+        if not contents:
+            lines.append("            stream_result = None\n")
             continue
-        binary_contents = tuple(
-            content
-            for content in _response_contents(response)
-            if content.kind == "binary"
+        lines.append(
+            "            response_content_type = "
+            'response.headers.get("Content-Type", "")\n'
         )
-        if not binary_contents:
-            continue
-        allowed = tuple(
-            dict.fromkeys(
-                _normalized_media_type(content.media_type)
-                for content in binary_contents
+        lines.append(
+            "            response_content_type = "
+            'response_content_type.split(";", 1)[0].strip().lower()\n'
+        )
+        for content_index, content in enumerate(contents):
+            keyword = "if" if content_index == 0 else "elif"
+            normalized = string_literal(_normalized_media_type(content.media_type))
+            lines.append(
+                f"            {keyword} response_content_type == {normalized}:\n"
             )
+            if content.kind == "binary":
+                lines.append(
+                    "                stream_result = "
+                    "BinaryStream(response, response_content_type)\n"
+                )
+            else:
+                lines.append("                await response.aread()\n")
+                result = _response_result(
+                    response, _response_expression(content), " " * 16
+                )
+                lines.append(f"                stream_result = {result}\n")
+        lines.append("            else:\n")
+        lines.append(
+            "                raise ValueError("
+            'f"unsupported response Content-Type: {response_content_type}")\n'
         )
-        lines.extend(
-            [
-                f"        {_response_condition(response.status)}:\n",
-                "            response_content_type = ",
-                'response.headers.get("Content-Type", "")\n',
-                "            response_content_type = ",
-                'response_content_type.split(";", 1)[0].strip().lower()\n',
-                f"            if response_content_type not in {allowed!r}:\n",
-                "                raise ValueError(\n",
-                '                    f"unsupported response Content-Type: ',
-                '{response_content_type}"\n',
-                "                )\n",
-                "            binary_stream = BinaryStream(\n",
-                "                response, response_content_type\n",
-                "            )\n",
-            ]
-        )
-    lines.append("        if binary_stream is None:\n")
+    lines.append("        else:\n")
     lines.append("            await response.aread()\n")
     errors = _render_response_handling(
         tuple(response for response in responses if not response.success)
@@ -378,11 +402,9 @@ def _render_stream_response_handling(responses: Sequence[Response]) -> str:
         for line in errors.splitlines(keepends=True)
     )
     lines.append(
-        "            raise ApiError(\n"
-        "                response.status_code, response.text, response=response\n"
-        "            )\n"
+        "            raise ApiError("
+        "response.status_code, response.text, response=response)\n"
     )
-    lines.append("        assert binary_stream is not None\n")
     return "".join(lines)
 
 

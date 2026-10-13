@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 006 — Support mixed binary success responses
+
+- Preserve every declared successful representation in buffered and streaming methods, including JSON/text alongside binary content and empty 204 responses.
+- Keep exact-status precedence over ranges and incremental binary downloads.
+- Added generated-client status/media dispatch regressions and regenerated the preview.
+
 ### Ticket 005 — Preserve dot-valued path segments
 
 - Encode standalone dot segments so HTTPX preserves the intended route.

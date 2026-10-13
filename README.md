@@ -330,6 +330,10 @@ call sites to pass fields directly.
 Successful binary responses also get a streaming context-manager variant. The
 buffered method remains available for small responses:
 
+For endpoints with mixed success representations, buffered methods return the
+declared bytes/model/text/None union. Streaming variants yield `BinaryStream`
+for binary content and the parsed value for JSON, text, or empty successes.
+
 ```python
 content = await client.download_recording(recording_id)
 

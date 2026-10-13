@@ -287,3 +287,68 @@ def test_005_path_segment_boundaries(tmp_path, value, encoded, tail, streaming):
         )
         assert seen[0].url.raw_path == f"/items/{encoded}{tail}".encode()
         assert result == b"data"
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize(
+    "status,media,value",
+    [
+        (200, "application/octet-stream", b"bytes"),
+        (200, "application/json", {"name": "json"}),
+        (200, "text/plain", "text"),
+        (204, None, None),
+        (201, "application/json", {"name": "exact"}),
+        (202, "application/octet-stream", b"range"),
+    ],
+)
+def test_006_mixed_binary_successes(tmp_path, streaming, status, media, value):
+    json_content = {"schema": {"$ref": "#/components/schemas/Item"}}
+    paths = {
+        "/item": {
+            "get": {
+                "operationId": "getItem",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/octet-stream": {},
+                            "application/json": json_content,
+                            "text/plain": {},
+                        }
+                    },
+                    "201": {"content": {"application/json": json_content}},
+                    "204": {},
+                    "2XX": {"content": {"application/octet-stream": {}}},
+                },
+            }
+        }
+    }
+    schemas = {
+        "Item": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {"name": {"type": "string"}},
+        }
+    }
+    with generated(tmp_path, paths, schemas) as package:
+
+        async def action(client):
+            if not streaming:
+                return await client.get_item()
+            async with client.stream_get_item() as result:
+                if isinstance(result, package.BinaryStream):
+                    return b"".join([chunk async for chunk in result.iter_bytes()])
+                return result
+
+        def response(_):
+            if media == "application/json":
+                return httpx.Response(status, json=value)
+            return httpx.Response(
+                status,
+                content=value,
+                headers=({"Content-Type": media} if media else {}),
+            )
+
+        _, result = invoke(package, action, response)
+        assert (
+            result.model_dump() if hasattr(result, "model_dump") else result
+        ) == value
