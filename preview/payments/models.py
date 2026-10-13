@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, ClassVar, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -240,6 +240,7 @@ class ListChargesParams(BaseModel):
 
 
 class CreateChargeResult201(BaseModel):
+    __httpxgen_response_body__: ClassVar[bool] = True
     body: Charge
     x_request_id: UUID | None = None
     x_rate_limit_remaining: int | None = None

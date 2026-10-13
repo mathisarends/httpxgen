@@ -386,6 +386,9 @@ original `cause`, including failures during binary iteration.
 and `ApiError` exposes a parsed `detail` plus convenient `code` and `message`
 properties. `body` and `parsed_body` remain compatibility aliases for
 `raw_body` and `detail`.
+When an error declares headers, `detail` retains its typed result wrapper and
+header fields; `code`/`message` read its typed payload. Arbitrary user payloads
+with a property named `body` are not unwrapped.
 
 ### Generated models
 

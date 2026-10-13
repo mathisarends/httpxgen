@@ -21,6 +21,7 @@ _RESERVED_NAMES = {
     "ApiResponse",
     "BaseModel",
     "ConfigDict",
+    "ClassVar",
     "Field",
     "HttpMethods",
     "HttpResponse",
