@@ -283,6 +283,10 @@ Request bodies are a single typed `body` argument, serialized by alias.
 Explicitly supplied nullable fields are sent as JSON null; unset nullable fields
 are omitted, including inside nested models:
 
+For `application/merge-patch+json`, all unset model fields are omitted, including
+schema defaults. Explicit values equal to a default are still sent. Ordinary
+JSON create requests continue to include non-null defaults.
+
 ```python
     async def create_charge(
         self,

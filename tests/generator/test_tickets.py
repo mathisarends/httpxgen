@@ -93,8 +93,52 @@ def test_001_explicit_null_fields(tmp_path, required, variants, media):
         )
         kwargs = {"content_type": media} if variants else {}
         seen, _ = invoke(package, lambda client: client.update_item(body, **kwargs))
-        assert json.loads(seen[0].content) == {
+        expected = {
             "name": None,
             "enabled": True,
             "nested": {"display-name": None},
+        }
+        if media == "application/merge-patch+json":
+            del expected["enabled"]
+        assert json.loads(seen[0].content) == expected
+
+
+def test_002_merge_patch_preserves_explicit_defaults(tmp_path):
+    schema = {
+        "type": "object",
+        "properties": {
+            "enabled": {"type": "boolean", "default": True},
+            "nested": {
+                "type": "object",
+                "properties": {
+                    "display-name": {"type": "string", "default": "unchanged"},
+                    "unused": {"type": "boolean", "default": True},
+                },
+            },
+        },
+    }
+    paths = {
+        "/item": {
+            "patch": {
+                "operationId": "updateItem",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/merge-patch+json": {
+                            "schema": {"$ref": "#/components/schemas/Patch"}
+                        }
+                    },
+                },
+                "responses": {"204": {}},
+            }
+        }
+    }
+    with generated(tmp_path, paths, {"Patch": schema}) as package:
+        body = package.Patch.model_validate(
+            {"enabled": True, "nested": {"display-name": "unchanged"}}
+        )
+        seen, _ = invoke(package, lambda client: client.update_item(body))
+        assert json.loads(seen[0].content) == {
+            "enabled": True,
+            "nested": {"display-name": "unchanged"},
         }

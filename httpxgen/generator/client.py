@@ -520,9 +520,10 @@ def _render_body(operation: Operation) -> str:
 
 def _render_body_variant(body: Body, indent: str) -> list[str]:
     if body.kind == "json":
+        partial = _json_omission_argument(body)
         lines = [
             f'{indent}body_arguments["json"] = serialize_json_body(\n',
-            f"{indent}    body, {body.annotation}\n",
+            f"{indent}    body, {body.annotation}{partial}\n",
             f"{indent})\n",
         ]
     elif body.kind in {"form", "multipart"}:
@@ -563,9 +564,10 @@ def _render_body_variant(body: Body, indent: str) -> list[str]:
 
 def _render_required_body(body: Body) -> list[str]:
     if body.kind == "json":
+        partial = _json_omission_argument(body)
         return [
             f"{_INDENT}json_body = serialize_json_body(\n",
-            f"{_INDENT}    body, {body.annotation}\n",
+            f"{_INDENT}    body, {body.annotation}{partial}\n",
             f"{_INDENT})\n",
         ]
     if body.kind == "form":
@@ -577,6 +579,14 @@ def _render_required_body(body: Body) -> list[str]:
     if body.kind == "multipart":
         return _render_multipart_body(body, _INDENT)
     return []
+
+
+def _json_omission_argument(body: Body) -> str:
+    return (
+        ", partial=True"
+        if _normalized_media_type(body.media_type) == "application/merge-patch+json"
+        else ""
+    )
 
 
 def _render_multipart_body(body: Body, indent: str) -> list[str]:
