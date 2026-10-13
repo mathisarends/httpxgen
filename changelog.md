@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Ticket 027 — Reject invalid request content_type choices
+
+- Validate media-selection values before body dispatch, including omitted optional bodies; report supplied and valid choices in `RequestValidationError` without sending a request.
+- Added required/optional and buffered binary runtime regressions for invalid and valid choices.
+
 ### Ticket 026 — Validate JSON request body inputs
 
 - Validate declared JSON input types before serialization and transport, including mappings and mutated generated models.

@@ -415,6 +415,11 @@ class PaymentsClient:
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
             body_arguments: dict[str, Any] = {}
+            if content_type not in ('application/json', 'text/plain'):
+                raise ValueError(
+                    f"unsupported request Content-Type: {content_type!r}; "
+                    "expected one of application/json, text/plain"
+                )
             if content_type == "application/json":
                 body_arguments["json"] = serialize_json_body(
                     body, CustomerProfileRequest

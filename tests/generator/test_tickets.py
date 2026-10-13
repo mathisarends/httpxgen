@@ -16,6 +16,69 @@ from httpxgen.selection import filter_operations_by_tags
 
 
 @pytest.mark.parametrize("required", [False, True])
+@pytest.mark.parametrize("binary", [False, True])
+def test_027_invalid_media_choices_fail_before_transport(tmp_path, required, binary):
+    content = {
+        "application/json": {"schema": {"type": "string"}},
+        "text/plain": {"schema": {"type": "string"}},
+    }
+    responses = (
+        {"200": {"content": {"application/octet-stream": {}}}}
+        if binary
+        else {"204": {}}
+    )
+    paths = {
+        "/item": {
+            "post": {
+                "operationId": "createItem",
+                "requestBody": {"required": required, "content": content},
+                "responses": responses,
+            }
+        }
+    }
+    with generated(tmp_path, paths) as package:
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(
+                200 if binary else 204,
+                content=b"result" if binary else b"",
+                headers={"Content-Type": "application/octet-stream"} if binary else {},
+            )
+
+        with pytest.raises(
+            package.RequestValidationError,
+            match=r"application/xml.*application/json.*text/plain",
+        ):
+            invoke(
+                package,
+                lambda client: client.create_item(
+                    "value", content_type="application/xml"
+                ),
+                handler,
+            )
+        if not required:
+            with pytest.raises(package.RequestValidationError):
+                invoke(
+                    package,
+                    lambda client: client.create_item(content_type="application/xml"),
+                    handler,
+                )
+        assert calls == []
+        for media in content:
+            invoke(
+                package,
+                lambda client, media=media: client.create_item(
+                    "value", content_type=media
+                ),
+                handler,
+            )
+        assert calls[0].content == b'"value"'
+        assert calls[1].content == b"value"
+
+
+@pytest.mark.parametrize("required", [False, True])
 @pytest.mark.parametrize("variants", [False, True])
 def test_026_json_request_inputs_are_validated_before_transport(
     tmp_path, required, variants
