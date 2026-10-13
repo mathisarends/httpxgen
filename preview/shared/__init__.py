@@ -18,6 +18,7 @@ from .serialization import (
     scalar,
     serialize_path,
     serialize_query,
+    serialize_json_body,
     serialize_simple,
 )
 from .transport import (
@@ -51,6 +52,7 @@ __all__ = [
     "scalar",
     "serialize_path",
     "serialize_query",
+    "serialize_json_body",
     "serialize_simple",
     "upload_file_part",
 ]

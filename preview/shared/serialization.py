@@ -9,9 +9,38 @@ from enum import Enum
 from typing import Any, NamedTuple
 from urllib.parse import quote
 
+from pydantic import BaseModel, RootModel, TypeAdapter
+
 type Credential = str | tuple[str, str]
 
 _RESERVED_CHARACTERS = ":/?#[]@!$&'()*+,;="
+
+
+def serialize_json_body(value: Any, annotation: Any) -> Any:
+    return TypeAdapter(annotation).dump_python(
+        value, mode="json", by_alias=True, exclude=_unset_null_fields(value)
+    )
+
+
+def _unset_null_fields(value: Any) -> dict[Any, Any]:
+    if isinstance(value, RootModel):
+        return _unset_null_fields(value.root)
+    if isinstance(value, BaseModel):
+        fields = {name: getattr(value, name) for name in type(value).model_fields}
+        unset = fields.keys() - value.model_fields_set
+    elif isinstance(value, Mapping):
+        fields, unset = value, set()
+    elif isinstance(value, (list, tuple)):
+        fields, unset = dict(enumerate(value)), set()
+    else:
+        return {}
+    excluded: dict[Any, Any] = {}
+    for name, item in fields.items():
+        if name in unset and item is None:
+            excluded[name] = True
+        elif nested := _unset_null_fields(item):
+            excluded[name] = nested
+    return excluded
 
 
 class SecurityScheme(NamedTuple):

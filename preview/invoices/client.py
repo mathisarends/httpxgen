@@ -25,6 +25,7 @@ from preview.shared import (
     ResponseValidationError,
     TransportError,
     apply_security,
+    serialize_json_body,
     serialize_path,
     serialize_query,
 )
@@ -129,8 +130,8 @@ class InvoicesClient:
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-            json_body = TypeAdapter(CreateInvoiceRequest).dump_python(
-                body, mode="json", by_alias=True, exclude_none=True
+            json_body = serialize_json_body(
+                body, CreateInvoiceRequest
             )
 
         except ClientError:
