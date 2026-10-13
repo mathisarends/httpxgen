@@ -5,8 +5,11 @@
     ) -> {{ return_annotation }}:
         async with self.stream_{{ operation.name }}(
 {{ forwarded_arguments }}        ) as stream:
+{{ buffered_stream_handling }}
+{% if has_plain_binary %}
             if isinstance(stream, BinaryStream):
                 return b"".join([chunk async for chunk in stream.iter_bytes()])
+{% endif %}
             return stream
 
     @asynccontextmanager

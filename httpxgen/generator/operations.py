@@ -680,10 +680,24 @@ def _header_identifier(value: str) -> str:
 
 def response_model_names(operation: Operation) -> list[str]:
     return [
-        response.result_annotation
+        name
         for response in operation.responses
-        if response.result_annotation is not None
+        for name in (response.result_annotation, stream_result_name(response))
+        if name is not None
     ]
+
+
+def stream_result_name(response: Response) -> str | None:
+    if (
+        response.success
+        and response.result_annotation
+        and (
+            response.kind == "binary"
+            or any(content.kind == "binary" for content in response.contents)
+        )
+    ):
+        return f"{response.result_annotation}Stream"
+    return None
 
 
 def _is_success_status(value: str) -> bool:

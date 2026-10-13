@@ -17,6 +17,7 @@ from httpxgen.generator.operations import (
     Response,
     query_model_name,
     query_parameters,
+    stream_result_name,
 )
 from httpxgen.generator.schema import (
     is_object,
@@ -41,6 +42,7 @@ def render_models(
     *,
     defined: Collection[str] | None = None,
     external: Sequence[tuple[str, Sequence[str]]] = (),
+    transport_module: str = "transport",
 ) -> str:
     """Render the models of `defined`, resolving references against `schemas`."""
     defined = set(schemas) if defined is None else set(defined)
@@ -94,7 +96,7 @@ def render_models(
     )
     if "_one_of(" in body or "_one_of(" in operation_annotations:
         body = f"{_ONE_OF_VALIDATOR}\n\n\n{body}"
-    imports = _render_model_imports(body, external)
+    imports = _render_model_imports(body, external, transport_module)
     return render_template(TemplateName.MODELS, imports=imports, body=body)
 
 
@@ -139,7 +141,15 @@ def _render_response_model(response: Response) -> str:
         f"    {header.name}: {_optional(header.annotation)} = None"
         for header in response.headers
     )
-    return f"class {response.result_annotation}(BaseModel):\n" + "\n".join(fields)
+    block = f"class {response.result_annotation}(BaseModel):\n" + "\n".join(fields)
+    if name := stream_result_name(response):
+        stream_fields = ["    body: BinaryStream", *fields[1:]]
+        block += (
+            f"\n\n\nclass {name}(BaseModel):\n"
+            "    model_config = ConfigDict(arbitrary_types_allowed=True)\n"
+            + "\n".join(stream_fields)
+        )
+    return block
 
 
 def _optional(annotation: str) -> str:
@@ -167,7 +177,9 @@ def _render_query_field(parameter: Parameter) -> str:
 
 
 def _render_model_imports(
-    body: str, external: Sequence[tuple[str, Sequence[str]]] = ()
+    body: str,
+    external: Sequence[tuple[str, Sequence[str]]] = (),
+    transport_module: str = "transport",
 ) -> str:
     lines: list[str] = []
     if "json." in body:
@@ -201,6 +213,8 @@ def _render_model_imports(
         used = used_names(body, tuple(names))
         if used:
             lines.extend(["", f"from {module} import {', '.join(used)}"])
+    if "BinaryStream" in body:
+        lines.extend(["", f"from {transport_module} import BinaryStream"])
     return "\n".join(lines)
 
 
