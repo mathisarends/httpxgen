@@ -138,7 +138,12 @@ def read_operations(spec: OpenAPISpec) -> tuple[Operation, ...]:
             parameters = _read_parameters(
                 [*path_item.parameters, *operation.parameters], spec
             )
-            _validate_parameters(path, parameters, has_body=body is not None)
+            _validate_parameters(
+                path,
+                parameters,
+                has_body=body is not None,
+                has_content_type=len(bodies) > 1,
+            )
             if body is not None and body.kind == "multipart":
                 _validate_multipart_fields(path, parameters, body.multipart_fields)
             security_source = (
@@ -278,12 +283,21 @@ def _read_parameters(
 
 
 def _validate_parameters(
-    path: str, parameters: Sequence[Parameter], *, has_body: bool
+    path: str,
+    parameters: Sequence[Parameter],
+    *,
+    has_body: bool,
+    has_content_type: bool = False,
 ) -> None:
     names = [item.name for item in parameters]
     if len(names) != len(set(names)):
         raise GenerationError(f"{path} has parameter names that collide in Python")
     reserved = {"self", "timeout"} | ({"body"} if has_body else set())
+    if has_content_type and "content_type" in names:
+        raise GenerationError(
+            f"{path} API parameter 'content_type' conflicts with the generated "
+            "content_type media selection argument; rename the API parameter"
+        )
     conflicts = sorted(reserved.intersection(names))
     if conflicts:
         raise GenerationError(

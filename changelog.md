@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 020 — Reserve the content_type control argument
+
+- Reject API parameters that collide with the generated media-selection argument on operations offering multiple request media types.
+- Preserve ordinary `content_type` API parameters when no control argument is generated.
+- Added pre-write rejection and working single-media runtime regressions.
+
 ### Ticket 019 — Reserve all generated client method names
 
 - Reject operations that collide with constructors, lifecycle methods, or generated streaming companions before writing output.
