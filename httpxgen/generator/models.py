@@ -156,14 +156,17 @@ def _render_query_model(operation: Operation) -> str:
 
 
 def _render_response_model(response: Response) -> str:
-    fields = [f"    body: {response.annotation}"]
+    fields = [
+        "    __httpxgen_response_body__: ClassVar[bool] = True",
+        f"    body: {response.annotation}",
+    ]
     fields.extend(
         f"    {header.name}: {_optional(header.annotation)} = None"
         for header in response.headers
     )
     block = f"class {response.result_annotation}(BaseModel):\n" + "\n".join(fields)
     if name := stream_result_name(response):
-        stream_fields = ["    body: BinaryStream", *fields[1:]]
+        stream_fields = [fields[0], "    body: BinaryStream", *fields[2:]]
         block += (
             f"\n\n\nclass {name}(BaseModel):\n"
             "    model_config = ConfigDict(arbitrary_types_allowed=True)\n"
@@ -205,7 +208,7 @@ def _render_model_imports(
     if "json." in body:
         lines.append("import json")
     datetime_names = used_names(body, ("date", "datetime"))
-    typing_names = used_names(body, ("Annotated", "Any", "Literal"))
+    typing_names = used_names(body, ("Annotated", "Any", "ClassVar", "Literal"))
     pydantic_names = used_names(
         body,
         (

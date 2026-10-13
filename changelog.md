@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 034 — Expose ApiError payload convenience values
+
+- Mark generated response wrappers explicitly and read `ApiError.code`/`message` from their typed payload while keeping header and compatibility accessors intact.
+- Avoid unwrapping arbitrary dictionary/model payloads merely because they contain `body`.
+- Added header/no-header error and dictionary-detail regressions; regenerated the preview.
+
 ### Ticket 033 — Merge headers case-insensitively
 
 - Deduplicate configured headers and use case-insensitive defaults/replacements for media headers, operation parameters, and credentials.

@@ -74,6 +74,8 @@ class ApiError(ClientError):
 
 
 def _detail_value(detail: object | None, name: str) -> object | None:
+    if getattr(type(detail), "__httpxgen_response_body__", False):
+        detail = getattr(detail, "body", None)
     if isinstance(detail, dict):
         return detail.get(name)
     return getattr(detail, name, None)

@@ -16,6 +16,55 @@ from httpxgen.generator.normalize import normalize_inline_schemas
 from httpxgen.selection import filter_operations_by_tags
 
 
+@pytest.mark.parametrize("headers", [False, True])
+def test_034_api_error_accessors_reach_typed_body_only(tmp_path, headers):
+    error_response = {
+        "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
+        }
+    }
+    if headers:
+        error_response["headers"] = {"X-Trace": {"schema": {"type": "string"}}}
+    paths = {
+        "/item": {
+            "get": {
+                "operationId": "getItem",
+                "responses": {"204": {}, "400": error_response},
+            }
+        }
+    }
+    schemas = {
+        "Error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {"code": {"type": "string"}, "message": {"type": "string"}},
+        }
+    }
+    with generated(tmp_path, paths, schemas) as package:
+        with pytest.raises(package.ApiError) as caught:
+            invoke(
+                package,
+                lambda client: client.get_item(),
+                lambda _: httpx.Response(
+                    400,
+                    json={"code": "bad", "message": "failed"},
+                    headers={"X-Trace": "abc"},
+                ),
+            )
+        error = caught.value
+        assert error.code == "bad"
+        assert error.message == "failed"
+        assert error.parsed_body is error.detail
+        assert error.body == error.raw_body
+        if headers:
+            assert error.detail.x_trace == "abc"
+            assert error.detail.body.code == "bad"
+        arbitrary = package.ApiError(400, "raw", {"body": {"code": "nested"}})
+        assert arbitrary.code is None
+        direct = package.ApiError(400, "raw", {"body": {}, "code": "top"})
+        assert direct.code == "top"
+
+
 def test_033_headers_merge_without_case_duplicates(tmp_path):
     paths = {
         "/item": {
