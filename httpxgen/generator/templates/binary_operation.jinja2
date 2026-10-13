@@ -2,17 +2,19 @@
         self,
 {{ signature }}        *,
 {{ content_type_argument }}        timeout: float | None = None,
-    ) -> bytes:
+    ) -> {{ return_annotation }}:
         async with self.stream_{{ operation.name }}(
 {{ forwarded_arguments }}        ) as stream:
-            return b"".join([chunk async for chunk in stream.iter_bytes()])
+            if isinstance(stream, BinaryStream):
+                return b"".join([chunk async for chunk in stream.iter_bytes()])
+            return stream
 
     @asynccontextmanager
     async def stream_{{ operation.name }}(
         self,
 {{ signature }}        *,
 {{ content_type_argument }}        timeout: float | None = None,
-    ) -> AsyncIterator[BinaryStream]:
+    ) -> AsyncIterator[{{ stream_annotation }}]:
         try:
 {{ assignments | indent(4, true) }}
         except ClientError:
@@ -46,6 +48,6 @@
             raise validation_error from error
 
         try:
-            yield binary_stream
+            yield stream_result
         finally:
             await response_stack.aclose()
