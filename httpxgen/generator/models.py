@@ -313,7 +313,11 @@ def _referenced_enum_member(
         return None
     name = reference.rsplit("/", 1)[-1].replace("~1", "/").replace("~0", "~")
     target = schemas.get(name)
-    if not isinstance(target, Mapping) or value not in target.get("enum", []):
+    if (
+        not isinstance(target, Mapping)
+        or "const" in target
+        or value not in target.get("enum", [])
+    ):
         return None
     return f"{class_name(name)}.{enum_member(value)}"
 
@@ -325,6 +329,8 @@ def _render_component(
     schemas: Mapping[str, Any],
 ) -> str:
     component_class_name = class_name(name)
+    if "const" in schema:
+        return f"{component_class_name} = {schema_type(schema, schemas)}"
     enum = schema.get("enum")
     if enum is not None and all(isinstance(value, str) for value in enum):
         member_names = [enum_member(value) for value in enum]

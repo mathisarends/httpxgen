@@ -861,6 +861,10 @@ def _parameter_default_source(
     if isinstance(reference, str):
         name = _reference_name(reference, "schemas")
         target = spec.components.schemas.get(name, {})
-        if isinstance(default, str) and default in target.get("enum", []):
+        if (
+            isinstance(default, str)
+            and "const" not in target
+            and default in target.get("enum", [])
+        ):
             return f"{class_name(name)}.{enum_member(default)}"
     return repr(default)

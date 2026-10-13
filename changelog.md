@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 025 — Enforce const/enum intersections
+
+- Render component const constraints consistently with inline schemas, retaining the intersection with enum and rejecting contradictory combinations.
+- Keep enum-only components readable and avoid invalid enum-member defaults for const aliases.
+- Added string/numeric component/inline runtime and contradiction regressions.
+
 ### Ticket 024 — Retain scalar, root-container, and item constraints
 
 - Carry supported numeric/string/container constraints in reusable `Annotated` types, including scalar components and nested array items.
