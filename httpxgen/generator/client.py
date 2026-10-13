@@ -125,7 +125,7 @@ def _render_client_imports(
     model_names: Sequence[str],
     layout: Layout,
 ) -> str:
-    typing_names = used_names(annotations, ("Literal",))
+    typing_names = used_names(annotations, ("Annotated", "Literal"))
     has_content_variants = any(
         len(_operation_bodies(operation)) > 1 for operation in operations
     )
@@ -195,6 +195,8 @@ def _render_client_imports(
     for name in model_names:
         module = layout.shared_models if name in layout.shared_names else layout.models
         by_module.setdefault(module, []).append(name)
+    if "_one_of(" in annotations:
+        by_module.setdefault(layout.models, []).append("_one_of")
     lines.extend(
         _render_import(f"from {module} import", sorted(names))
         for module, names in sorted(by_module.items())

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 014 — Import inline oneOf validation support
+
+- Import `Annotated` and the exact-oneOf helper wherever inline operation annotations are evaluated.
+- Emit the helper even when only inline request/response schemas require it.
+- Added imported-client regressions across primitive path/query/header/body/response positions.
+
 ### Ticket 013 — Preserve nullable component references
 
 - Carry effective nullability through component references, aliases, nested fields, and request/response annotations while keeping object validation intact.

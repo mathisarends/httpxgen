@@ -85,7 +85,14 @@ def render_models(
     body = "\n\n\n".join(block for block in blocks if block)
     if not body:
         body = "# This API does not define component schemas."
-    elif "_one_of(" in body:
+    operation_annotations = " ".join(
+        [
+            *(parameter.annotation for op in operations for parameter in op.parameters),
+            *(op.body_annotation or "" for op in operations),
+            *(response.annotation for op in operations for response in op.responses),
+        ]
+    )
+    if "_one_of(" in body or "_one_of(" in operation_annotations:
         body = f"{_ONE_OF_VALIDATOR}\n\n\n{body}"
     imports = _render_model_imports(body, external)
     return render_template(TemplateName.MODELS, imports=imports, body=body)
