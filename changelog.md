@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Ticket 012 — Respect URL-encoded body encodings
+
+- Honor per-property array explode/style and JSON content encoding, with JSON defaults for structured values and explicit form serialization for flat objects.
+- Emit encoded bytes with the form Content-Type so repeated values work with async HTTPX; reject unsupported encoding options.
+- Added required/optional/media-variant runtime regressions and regenerated the preview.
+
 ### Ticket 011 — Serialize multipart object fields as JSON
 
 - Encode objects and object-array items as JSON parts with aliases and correct media types; respect JSON/+json contentType metadata and file content types.

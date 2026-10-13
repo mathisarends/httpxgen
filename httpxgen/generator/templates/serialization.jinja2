@@ -1,8 +1,9 @@
 from base64 import b64encode
+import json
 from collections.abc import Mapping, Sequence
 from enum import Enum
 from typing import Any, NamedTuple
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from pydantic import BaseModel, RootModel, TypeAdapter
 
@@ -20,6 +21,31 @@ UNSET = UnsetType()
 
 def serialize_json_part(value: Any, annotation: Any) -> str:
     return TypeAdapter(annotation).dump_json(value, by_alias=True).decode()
+
+
+def serialize_form_body(
+    value: Any, annotation: Any, encodings: Mapping[str, Mapping[str, Any]]
+) -> bytes:
+    data = TypeAdapter(annotation).dump_python(
+        value, mode="json", by_alias=True, exclude_none=True
+    )
+    if not isinstance(data, Mapping):
+        raise ValueError("URL-encoded form body must be an object")
+    pairs: list[tuple[str, str]] = []
+    for name, item in data.items():
+        encoding = encodings.get(name, {})
+        if encoding.get("json"):
+            pairs.append((name, json.dumps(item, separators=(",", ":"))))
+        else:
+            if isinstance(item, Mapping) and any(
+                isinstance(nested, (Mapping, list, tuple)) for nested in item.values()
+            ):
+                raise ValueError(f"nested form field {name!r} requires JSON encoding")
+            pairs.extend(serialize_query(
+                name, item, encoding.get("style", "form"),
+                explode=encoding.get("explode", True),
+            ))
+    return urlencode(pairs).encode()
 
 
 def serialize_json_body(value: Any, annotation: Any, *, partial: bool = False) -> Any:

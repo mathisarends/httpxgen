@@ -56,6 +56,7 @@ _OPERATION_LOCALS = {
     "stream_result",
     "binary_content",
     "serialize_json_part",
+    "serialize_form_body",
     "stream",
     "item",
     "scalar",

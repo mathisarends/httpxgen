@@ -39,6 +39,7 @@ from preview.shared import (
     apply_security,
     binary_content,
     scalar,
+    serialize_form_body,
     serialize_json_body,
     serialize_path,
     serialize_query,
@@ -479,8 +480,9 @@ class PaymentsClient:
 
             apply_security(self._credentials, [("bearerAuth",)], headers, [], {})
 
-            form_data = TypeAdapter(ImportCustomerProfileBody).dump_python(
-                body, mode="python", by_alias=True, exclude_none=True
+            headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
+            form_data = serialize_form_body(
+                body, ImportCustomerProfileBody, {'display_name': {'style': 'form', 'explode': True, 'json': False}, 'email': {'style': 'form', 'explode': True, 'json': False}}
             )
 
         except ClientError:
@@ -493,7 +495,7 @@ class PaymentsClient:
                 method=HttpMethods.POST,
                 url=f"{self._base_url}{path}",
                 headers=headers,
-                data=form_data,
+                content=form_data,
                 timeout=self._timeout if timeout is None else timeout,
             )
         except ClientError:

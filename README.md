@@ -541,6 +541,11 @@ client-check:
 
 ## Supported scope
 
+URL-encoded forms honor supported per-field style/explode encodings and JSON
+contentType. Object values use JSON by default; explicit form styles can flatten
+simple objects. Unsupported encoding options (including form allowReserved)
+fail generation.
+
 Multipart object fields and object-array items are JSON parts with aliases and
 the declared `encoding.contentType` (JSON/+json), or application/json by default.
 File parts also honor `encoding.contentType`. Unsupported multipart encoding

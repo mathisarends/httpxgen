@@ -5,12 +5,79 @@ import sys
 from contextlib import contextmanager
 from email import policy
 from email.parser import BytesParser
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
 
 from httpxgen import OpenAPISpec, write_client
 from httpxgen.generator import GenerationError
+
+
+@pytest.mark.parametrize("required", [False, True])
+@pytest.mark.parametrize("variants", [False, True])
+@pytest.mark.parametrize("explode", [False, True])
+def test_012_urlencoded_encoding_rules(tmp_path, required, variants, explode):
+    shape = {
+        "type": "object",
+        "properties": {
+            "tags": {"type": "array", "items": {"type": "string"}},
+            "point": {"$ref": "#/components/schemas/Point"},
+            "json-point": {"$ref": "#/components/schemas/Point"},
+            "default-point": {"$ref": "#/components/schemas/Point"},
+        },
+    }
+    media = {
+        "schema": {"$ref": "#/components/schemas/Form"},
+        "encoding": {
+            "tags": {"style": "form", "explode": explode},
+            "point": {"style": "form", "explode": False},
+            "json-point": {"contentType": "application/json"},
+        },
+    }
+    content = {"application/x-www-form-urlencoded": media}
+    if variants:
+        content["text/plain"] = {"schema": {"type": "string"}}
+    paths = {
+        "/submit": {
+            "post": {
+                "operationId": "submit",
+                "requestBody": {"required": required, "content": content},
+                "responses": {"204": {}},
+            }
+        }
+    }
+    point = {
+        "type": "object",
+        "required": ["x", "y"],
+        "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+    }
+    with generated(tmp_path, paths, {"Form": shape, "Point": point}) as package:
+        body = package.Form.model_validate(
+            {
+                "tags": ["a", "b"],
+                "point": {"x": 1, "y": 2},
+                "json-point": {"x": 1, "y": 2},
+                "default-point": {"x": 1, "y": 2},
+            }
+        )
+        kwargs = (
+            {"content_type": "application/x-www-form-urlencoded"} if variants else {}
+        )
+        seen, _ = invoke(package, lambda client: client.submit(body, **kwargs))
+        assert seen[0].headers["Content-Type"] == "application/x-www-form-urlencoded"
+        values = parse_qs(seen[0].content.decode())
+        assert values["tags"] == (["a", "b"] if explode else ["a,b"])
+        assert values["point"] == ["x,1,y,2"]
+        assert json.loads(values["json-point"][0]) == {"x": 1, "y": 2}
+        assert json.loads(values["default-point"][0]) == {"x": 1, "y": 2}
+
+    media["encoding"]["tags"] = {"allowReserved": True}
+    with (
+        pytest.raises(GenerationError, match="unsupported encoding"),
+        generated(tmp_path / "unsupported", paths, {"Form": shape, "Point": point}),
+    ):
+        pass
 
 
 @pytest.mark.parametrize("encoding", [{}, {"contentType": "application/custom+json"}])
