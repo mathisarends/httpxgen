@@ -16,6 +16,95 @@ from httpxgen.selection import filter_operations_by_tags
 
 
 @pytest.mark.parametrize(
+    "shape,invalid,valid",
+    [
+        ({"type": "integer", "minimum": 10, "maximum": 20}, -1, 10),
+        (
+            {"type": "string", "minLength": 2, "maxLength": 4, "pattern": "^a"},
+            "b",
+            "abc",
+        ),
+        (
+            {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 3,
+                "items": {"type": "integer", "minimum": 10},
+            },
+            [],
+            [10, 11],
+        ),
+        ({"type": "array", "items": {"type": "integer", "minimum": 10}}, [-1], [10]),
+    ],
+)
+@pytest.mark.parametrize("inline", [False, True])
+def test_024_scalar_and_item_constraints(tmp_path, shape, invalid, valid, inline):
+    schema = shape if inline else {"$ref": "#/components/schemas/Value"}
+    paths = {
+        "/item": {
+            "get": {
+                "operationId": "getItem",
+                "responses": {
+                    "200": {"content": {"application/json": {"schema": schema}}}
+                },
+            }
+        }
+    }
+    with generated(tmp_path, paths, {} if inline else {"Value": shape}) as package:
+        with pytest.raises(package.ResponseValidationError):
+            invoke(
+                package,
+                lambda client: client.get_item(),
+                lambda _: httpx.Response(200, json=invalid),
+            )
+        _, result = invoke(
+            package,
+            lambda client: client.get_item(),
+            lambda _: httpx.Response(200, json=valid),
+        )
+        assert result == valid
+
+
+def test_024_nested_array_item_constraints(tmp_path):
+    shape = {
+        "type": "object",
+        "required": ["xs"],
+        "properties": {
+            "xs": {"type": "array", "items": {"type": "integer", "minimum": 10}}
+        },
+    }
+    paths = {
+        "/item": {
+            "get": {
+                "operationId": "getItem",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Item"}
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    }
+    with generated(tmp_path, paths, {"Item": shape}) as package:
+        with pytest.raises(package.ResponseValidationError):
+            invoke(
+                package,
+                lambda client: client.get_item(),
+                lambda _: httpx.Response(200, json={"xs": [-1]}),
+            )
+        _, result = invoke(
+            package,
+            lambda client: client.get_item(),
+            lambda _: httpx.Response(200, json={"xs": [10]}),
+        )
+        assert result.xs == [10]
+
+
+@pytest.mark.parametrize(
     "branches,value,valid",
     [
         ([{"type": "string"}, {"type": "integer"}], "123", True),

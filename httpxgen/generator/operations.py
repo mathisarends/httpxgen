@@ -254,7 +254,9 @@ def _read_parameters(
         schema = value.schema_
         if value.content:
             schema, _, _ = _select_media(value.content, "parameter", kinds=("json",))
-        annotation = schema_type(schema, spec.components.schemas)
+        annotation = schema_type(
+            schema, spec.components.schemas, include_constraints=False
+        )
         if (
             not required
             and schema.get("default", NO_DEFAULT) is NO_DEFAULT

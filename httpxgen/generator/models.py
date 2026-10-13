@@ -437,7 +437,7 @@ def _render_field(
     annotation = (
         _discriminator_annotation(schema, discriminator_enum)
         if discriminator_enum
-        else schema_type(schema, schemas)
+        else schema_type(schema, schemas, include_constraints=False)
     )
     field_args: list[str] = []
     if field_name != wire_name:
