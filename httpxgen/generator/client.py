@@ -537,6 +537,16 @@ def _render_body(operation: Operation) -> str:
         return "".join(_render_multipart_body(body, _INDENT))
     if len(bodies) > 1:
         lines = [f"{_INDENT}body_arguments: dict[str, Any] = {{}}\n"]
+        choices = tuple(item.media_type for item in bodies)
+        lines.append(f"{_INDENT}if content_type not in {choices!r}:\n")
+        lines.append(f"{_INDENT}    raise ValueError(\n")
+        lines.append(
+            f'{_INDENT}        f"unsupported request Content-Type: '
+            '{content_type!r}; "\n'
+        )
+        expected = string_literal("expected one of " + ", ".join(choices))
+        lines.append(f"{_INDENT}        {expected}\n")
+        lines.append(f"{_INDENT}    )\n")
         indent = _INDENT
         if not body.required:
             lines.append(f"{_INDENT}if body is not {absent}:\n")

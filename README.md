@@ -284,6 +284,8 @@ JSON inputs are validated using the declared Pydantic schema before the HTTP
 transport runs, including mappings and model instances changed after creation.
 Invalid inputs raise `RequestValidationError`; Pydantic's normal accepted
 conversions apply before serialization.
+Unsupported runtime `content_type` choices also raise `RequestValidationError`
+before sending a request, with the declared alternatives listed.
 Explicitly supplied nullable fields are sent as JSON null; unset nullable fields
 are omitted, including inside nested models:
 
