@@ -9,6 +9,7 @@ COMPONENT_KINDS = {
     "requestBodies": "request_body",
     "responses": "response",
     "pathItems": "path_item",
+    "mediaTypes": "media",
     "examples": "example",
     "links": "link",
     "callbacks": "callback",
@@ -26,6 +27,8 @@ _CHILDREN = {
             ("get", "put", "post", "delete", "options", "head", "patch", "trace"),
             "operation",
         ),
+        "query": "operation",
+        "additionalOperations": "map:operation",
         "parameters": "list:parameter",
     },
     "operation": {
@@ -43,10 +46,18 @@ _CHILDREN = {
     },
     "media": {
         "schema": "schema",
+        "itemSchema": "schema",
         "examples": "map:example",
         "encoding": "map:encoding",
+        "prefixEncoding": "list:encoding",
+        "itemEncoding": "encoding",
     },
-    "encoding": {"headers": "map:parameter"},
+    "encoding": {
+        "headers": "map:parameter",
+        "encoding": "map:encoding",
+        "prefixEncoding": "list:encoding",
+        "itemEncoding": "encoding",
+    },
     "schema": {
         **dict.fromkeys(
             (
@@ -72,6 +83,7 @@ _CHILDREN = {
                 "else",
                 "unevaluatedProperties",
                 "unevaluatedItems",
+                "contentSchema",
             ),
             "schema",
         ),
@@ -80,6 +92,7 @@ _CHILDREN = {
 }
 REFERENCE_KINDS = {
     "schema",
+    "media",
     "parameter",
     "request_body",
     "response",

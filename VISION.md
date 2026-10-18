@@ -17,7 +17,7 @@ dependency on `httpxgen`, and no hidden abstraction layer.
   shape of the public Python API. When trade-offs arise, favor an interface
   that is understandable, typed, and predictable for Python users.
 - **Correctness over completeness.** We reliably support the constructs found
-  in ordinary OpenAPI 3.0 and 3.1 specifications. Anything that cannot be
+  in ordinary OpenAPI 3.0, 3.1 and 3.2 specifications. Anything that cannot be
   translated unambiguously and correctly should fail early with a useful
   message instead of silently producing incorrect or loosely typed `Any` code.
 - **Explicit over magical.** The base URL, credentials, and

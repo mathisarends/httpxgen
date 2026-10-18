@@ -30,7 +30,7 @@ from httpxgen.generator.templates import (
     render_template,
 )
 from httpxgen.openapi import OpenAPISpec
-from httpxgen.selection import filter_operations_by_tags
+from httpxgen.selection import filter_operations_by_tags, paths_with_tags
 
 _SHARED = "shared"
 type HttpClientBackend = Literal["protocol", "httpx", "httpx2"]
@@ -95,7 +95,10 @@ def generate_workspace(
     )
     schemas = spec.components.schemas
     operations_by_tag = {
-        tag: read_operations(_only(spec, tag, tags, schema_tags)) for tag in tags
+        tag: read_operations(
+            spec.model_copy(update={"paths": paths_with_tags(spec, [tag])})
+        )
+        for tag in tags
     }
     validate_workspace_names(
         schemas,
@@ -198,13 +201,6 @@ def _schema_owners(spec: OpenAPISpec, tags: Sequence[str]) -> dict[str, str | No
                     owners[dependency] = None
                     changed = True
     return owners
-
-
-def _only(
-    spec: OpenAPISpec, tag: str, tags: Sequence[str], schema_tags: Sequence[str]
-) -> OpenAPISpec:
-    others = [item for item in tags if item != tag]
-    return filter_operations_by_tags(spec, [tag], schema_tags=[*others, *schema_tags])
 
 
 def _finish(files: dict[str, str]) -> dict[str, str]:

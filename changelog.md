@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- OpenAPI 3.2 input, including `components.mediaTypes` references. Tag and schema-tag selection follow Media Type `itemSchema` and JSON Schema `contentSchema`, so REST clients cut from mixed REST/SSE contracts keep their event models.
+- Explicit errors for OpenAPI 3.2 features that are not generated: `itemSchema` streaming bodies, `QUERY` operations, and `additionalOperations`. Untagged operations of these kinds are excluded by `--tag` like any other operation.
+
+### Fixed
+
+- Multi-tag workspace generation no longer fails when `--schema-tag` names a tag that is not also a `--tag`.
+
 ## 0.3.0 — 2026-10-13
 
 ### Migration from 0.2.0

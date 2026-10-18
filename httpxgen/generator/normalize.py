@@ -22,6 +22,7 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
         }
     )
     document = spec.model_dump(by_alias=True, exclude_none=True)
+    _inline_media_type_references(document)
     if spec.openapi.startswith("3.0"):
         _strip_oas30_reference_siblings(document)
         _normalize_oas30_keywords(document)
@@ -184,6 +185,34 @@ def normalize_inline_schemas(spec: OpenAPISpec) -> OpenAPISpec:
         return OpenAPISpec.model_validate(document)
     except Exception as error:
         raise GenerationError(f"failed to normalize inline schemas: {error}") from error
+
+
+def _inline_media_type_references(document: dict[str, Any]) -> None:
+    """Replace OpenAPI 3.2 Media Type references with the component they name."""
+    prefix = "#/components/mediaTypes/"
+    media_types = document.get("components", {}).get("mediaTypes", {})
+
+    def resolve(media: Any, seen: frozenset[str]) -> Any:
+        reference = media.get("$ref") if isinstance(media, dict) else None
+        if not isinstance(reference, str):
+            return media
+        if not reference.startswith(prefix):
+            raise GenerationError(f"invalid Media Type reference: {reference}")
+        if reference in seen:
+            raise GenerationError(f"cyclic Media Type reference: {reference}")
+        name = reference.removeprefix(prefix).replace("~1", "/").replace("~0", "~")
+        if name not in media_types:
+            raise GenerationError(f"unresolved reference: {reference}")
+        return resolve(deepcopy(media_types[name]), seen | {reference})
+
+    for node, kind in openapi_nodes(document):
+        if kind in {"request_body", "response", "parameter"} and isinstance(
+            node.get("content"), dict
+        ):
+            node["content"] = {
+                media_type: resolve(media, frozenset())
+                for media_type, media in node["content"].items()
+            }
 
 
 def _rewrite_reference(value: Any, old: str, new: str) -> Any:

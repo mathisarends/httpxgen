@@ -607,7 +607,7 @@ object values with their style-specific explode delimiters. Data is escaped
 before joining it, including literal commas, label dots, slashes, and percent
 signs. `allowReserved` applies only to query parameters.
 
-httpxgen targets ordinary OpenAPI 3.0 and 3.1 client specifications, not every
+httpxgen targets ordinary OpenAPI 3.0, 3.1 and 3.2 client specifications, not every
 JSON Schema feature. It supports JSON/YAML input, local component references,
 path/query/header/cookie serialization, JSON/form/multipart/binary request
 bodies, JSON/text/binary responses, numeric/default/status-range responses,
@@ -622,6 +622,21 @@ nullable or union bases fail generation with an unsupported-composition error.
 Required object keys without declared property schemas retain presence checks
 and their additional-property validation, including inherited and directional
 models. Their values remain unconstrained when additional properties are allowed.
+
+OpenAPI 3.2 documents are accepted with the same feature set as 3.1, plus
+reusable `components.mediaTypes` references. Streaming media types described
+through `itemSchema` (for example Server-Sent Events or JSON Lines), `QUERY`
+operations, `additionalOperations`, and `querystring` parameters are not
+generated and fail with an explicit error. Mixed REST/streaming documents can
+still produce a REST client: select the REST operations with `--tag` and keep
+the event models with `--schema-tag`. Model selection follows `itemSchema` and
+`contentSchema`, so a payload such as
+`itemSchema.properties.data.contentSchema: {$ref: ...}` keeps its referenced
+models, including nested and recursive references:
+
+```sh
+httpxgen openapi.json src/api --tag rest --schema-tag sse
+```
 
 Unsupported constructs fail generation where possible. Important remaining
 limitations are external references, callbacks/webhooks, automatic
