@@ -8,6 +8,8 @@
 - Incremental binary downloads through `stream_<operation>()`, with `BinaryStream` metadata and buffered convenience methods.
 - Lazy binary upload iterables and multipart uploads from bytes, open files, or `UploadFile`, including repeated file fields and explicit part metadata.
 - A generated `ClientError` hierarchy with `TransportError`, `RequestValidationError`, `ResponseValidationError`, and typed `ApiError` details.
+- OpenAPI 3.2 input, including `components.mediaTypes` references. Tag and schema-tag selection follow Media Type `itemSchema` and JSON Schema `contentSchema`, so REST clients cut from mixed REST/SSE contracts keep their event models.
+- Explicit errors for OpenAPI 3.2 features that are not generated: `itemSchema` streaming bodies, `QUERY` operations, and `additionalOperations`. Untagged operations of these kinds are excluded by `--tag` like any other operation.
 
 ### Changed
 
@@ -20,6 +22,7 @@
 
 - Preserve and validate declared headers on empty success responses in operations that also return binary content, for both buffered and streaming methods.
 - Deserialize array response headers before validating their schema, retaining array/item constraints, nullable arrays, and referenced schema aliases.
+- Multi-tag workspace generation no longer fails when `--schema-tag` names a tag that is not also a `--tag`.
 
 ### Production-readiness fixes
 

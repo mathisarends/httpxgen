@@ -10,6 +10,7 @@ from httpxgen.openapi import (
     OpenAPISpec,
     PathItem,
     get_operation,
+    unsupported_operations,
 )
 from httpxgen.references import COMPONENT_KINDS, reference_values, rewrite_references
 
@@ -43,8 +44,8 @@ def filter_operations_by_tags(
             f"Available operation tags: {available_text}"
         )
 
-    selected_paths = _paths_with_tags(spec, requested)
-    schema_paths = _paths_with_tags(spec, (*requested, *schema_only))
+    selected_paths = paths_with_tags(spec, requested)
+    schema_paths = paths_with_tags(spec, (*requested, *schema_only))
     retained = _referenced_components(spec, schema_paths)
     selected_paths, retained = _canonicalize_schema_names(selected_paths, retained)
     components = Components.model_validate(retained)
@@ -58,13 +59,16 @@ def _operation_tags(spec: OpenAPISpec) -> set[str]:
     return {
         tag
         for path_item in spec.paths.values()
-        for method in HttpMethod
-        if (operation := get_operation(path_item, method)) is not None
+        for operation in (
+            *(get_operation(path_item, method) for method in HttpMethod),
+            *unsupported_operations(path_item).values(),
+        )
+        if operation is not None
         for tag in operation.tags
     }
 
 
-def _paths_with_tags(
+def paths_with_tags(
     spec: OpenAPISpec,
     tags: Sequence[str],
 ) -> dict[str, PathItem]:
@@ -77,8 +81,22 @@ def _paths_with_tags(
             else None
             for method in HttpMethod
         }
-        if any(operations.values()):
-            selected[path] = path_item.model_copy(deep=True, update=operations)
+        # Keep OpenAPI 3.2 QUERY/additional operations only when selected, so
+        # generation reports them instead of silently dropping them.
+        query = path_item.query
+        operations["query"] = (
+            query if query is not None and set(query.tags).intersection(tags) else None
+        )
+        additional = {
+            method: operation
+            for method, operation in path_item.additional_operations.items()
+            if set(operation.tags).intersection(tags)
+        }
+        if any(operations.values()) or additional:
+            selected[path] = path_item.model_copy(
+                deep=True,
+                update={**operations, "additional_operations": additional},
+            )
     return selected
 
 

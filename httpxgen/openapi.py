@@ -22,6 +22,7 @@ class OpenAPIModel(BaseModel):
 
 class MediaType(OpenAPIModel):
     schema_: dict[str, Any] | None = Field(default=None, alias="schema")
+    item_schema: dict[str, Any] | None = Field(default=None, alias="itemSchema")
     encoding: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
@@ -77,6 +78,10 @@ class PathItem(OpenAPIModel):
     head: APIOperation | None = None
     patch: APIOperation | None = None
     trace: APIOperation | None = None
+    query: APIOperation | None = None
+    additional_operations: dict[str, APIOperation] = Field(
+        default_factory=dict, alias="additionalOperations"
+    )
 
 
 class Components(OpenAPIModel):
@@ -89,6 +94,9 @@ class Components(OpenAPIModel):
     headers: dict[str, dict[str, Any]] = Field(default_factory=dict)
     path_items: dict[str, dict[str, Any]] = Field(
         default_factory=dict, alias="pathItems"
+    )
+    media_types: dict[str, dict[str, Any]] = Field(
+        default_factory=dict, alias="mediaTypes"
     )
     security_schemes: dict[str, dict[str, Any]] = Field(
         default_factory=dict, alias="securitySchemes"
@@ -109,10 +117,18 @@ class OpenAPISpec(OpenAPIModel):
     @field_validator("openapi")
     @classmethod
     def _validate_version(cls, value: str) -> str:
-        if not re.fullmatch(r"3\.(0|1)\.\d+(?:[-+].+)?", value):
-            raise ValueError("only OpenAPI 3.0 and 3.1 documents are supported")
+        if not re.fullmatch(r"3\.[012]\.\d+(?:[-+].+)?", value):
+            raise ValueError("only OpenAPI 3.0, 3.1 and 3.2 documents are supported")
         return value
 
 
 def get_operation(path_item: PathItem, method: HttpMethod) -> APIOperation | None:
     return getattr(path_item, method.value)
+
+
+def unsupported_operations(path_item: PathItem) -> dict[str, APIOperation]:
+    """OpenAPI 3.2 operations httpxgen does not generate, keyed by HTTP method."""
+    return {
+        **({"QUERY": path_item.query} if path_item.query is not None else {}),
+        **path_item.additional_operations,
+    }

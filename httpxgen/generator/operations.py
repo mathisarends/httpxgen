@@ -23,9 +23,11 @@ from httpxgen.openapi import (
     Reference,
     RequestBody,
     get_operation,
+    unsupported_operations,
 )
 
 NO_DEFAULT = object()
+_EXCLUDE_HINT = "and keep the schemas they reference with --schema-tag"
 
 
 @dataclass(frozen=True)
@@ -125,13 +127,21 @@ def read_operations(spec: OpenAPISpec) -> tuple[Operation, ...]:
     schemes = read_security_schemes(spec)
     for path in sorted(spec.paths):
         path_item = resolve_path_item(spec.paths[path], spec)
+        if unsupported := unsupported_operations(path_item):
+            methods = ", ".join(sorted(unsupported))
+            raise GenerationError(
+                f"{path} declares {methods} operation(s), which httpxgen does not "
+                f"generate; exclude them with --tag {_EXCLUDE_HINT}"
+            )
         for method in HttpMethod:
             operation = get_operation(path_item, method)
             if operation is None:
                 continue
             if not operation.operation_id:
                 raise GenerationError(f"{method.upper()} {path} has no operationId")
-            bodies = _read_bodies(operation.request_body, spec)
+            bodies = _read_bodies(
+                operation.request_body, spec, f"{method.upper()} {path} request body"
+            )
             if len(bodies) > 1 and any(body.kind == "multipart" for body in bodies):
                 raise GenerationError(
                     f"{method.upper()} {path} combines multipart/form-data with "
@@ -378,7 +388,7 @@ def _validate_multipart_fields(
 
 
 def _read_bodies(
-    value: RequestBody | Reference | None, spec: OpenAPISpec
+    value: RequestBody | Reference | None, spec: OpenAPISpec, context: str
 ) -> tuple[Body, ...]:
     if value is None:
         return ()
@@ -388,6 +398,7 @@ def _read_bodies(
                 value.ref, "requestBodies", spec.components.request_bodies
             )
         )
+    _reject_sequential_media(value.content, context)
     result: list[Body] = []
     for schema, media_type, kind in _media_options(
         value.content,
@@ -605,6 +616,9 @@ def _read_responses(
                 _resolve_component(response.ref, "responses", spec.components.responses)
             )
         success = _is_success_status(status_text)
+        _reject_sequential_media(
+            response.content, f"{method.upper()} {path} response {status_text}"
+        )
         headers = _read_response_headers(response.headers, spec, method, path)
         model_annotation: str | None = None
         if response.content:
@@ -766,6 +780,18 @@ def _response_model(
     name = _reference_name(schema["$ref"], "schemas")
     bases, own_schema = split_all_of(schemas.get(name, {}))
     return class_name(name) if bases or is_object(own_schema) else None
+
+
+def _reject_sequential_media(content: Mapping[str, MediaType], context: str) -> None:
+    streamed = sorted(
+        media_type for media_type, media in content.items() if media.item_schema
+    )
+    if streamed:
+        raise GenerationError(
+            f"{context} streams {', '.join(streamed)} items through itemSchema; "
+            "httpxgen does not generate streaming operations. Exclude the "
+            f"operation with --tag {_EXCLUDE_HINT}"
+        )
 
 
 def _select_media(
