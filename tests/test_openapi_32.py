@@ -163,7 +163,8 @@ def test_generating_an_item_schema_operation_fails_with_guidance(mixed_spec):
     with pytest.raises(
         GenerationError,
         match=r"GET /events response 200 streams text/event-stream items "
-        r"through itemSchema.*--tag.*--schema-tag",
+        r"through itemSchema.*--tag and keep the schemas it references "
+        r"with --schema-tag",
     ):
         generate_client(mixed_spec, "mixed")
 

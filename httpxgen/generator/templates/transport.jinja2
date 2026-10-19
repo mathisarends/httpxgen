@@ -65,7 +65,6 @@ class AsyncHttpClient(Protocol):
         self, method: str, url: str, *,
         params: tuple[tuple[str, str], ...] | str | None = None,
         headers: Mapping[str, str] | None = None,
-        cookies: dict[str, str] | None = None,
         content: BinaryContent | str | None = None,
         data: Mapping[str, Any] | None = None,
         files: Sequence[tuple[str, FilePart]] | None = None,

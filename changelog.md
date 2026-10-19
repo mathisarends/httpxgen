@@ -2,10 +2,23 @@
 
 ## Unreleased
 
+## 0.4.0 — 2026-10-19
+
+### Migration from 0.3.0
+
+- Regenerate clients and update consumers together; generated cookie handling changed (see Changed).
+- `--tag` and `--schema-tag` now follow JSON Schema `contentSchema`, so selections can keep models that were previously dropped.
+- Operations whose bodies use `itemSchema` now fail generation with guidance, including in 3.0 and 3.1 documents. Exclude them with `--tag` and keep their models with `--schema-tag`.
+- Custom `protocol` transports no longer receive a `cookies=` argument: cookie parameters and cookie API keys arrive in the `Cookie` header.
+
 ### Added
 
 - OpenAPI 3.2 input, including `components.mediaTypes` references. Tag and schema-tag selection follow Media Type `itemSchema` and JSON Schema `contentSchema`, so REST clients cut from mixed REST/SSE contracts keep their event models.
 - Explicit errors for OpenAPI 3.2 features that are not generated: `itemSchema` streaming bodies, `QUERY` operations, and `additionalOperations`. Untagged operations of these kinds are excluded by `--tag` like any other operation.
+
+### Changed
+
+- Cookie parameters and cookie API keys are sent in a single `Cookie` header, merged with the HTTP client's cookie jar and any default `Cookie` header, instead of the per-request `cookies=` argument that HTTPX and HTTPX2 deprecate. The generated `AsyncHttpClient` protocol no longer declares `cookies`.
 
 ### Fixed
 
