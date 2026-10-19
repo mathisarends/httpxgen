@@ -225,6 +225,8 @@ def _serialization_helpers(operations: Sequence[Operation]) -> list[str]:
             helpers.add("append_query")
         if operation.security:
             helpers.add("apply_security")
+        if _needs_cookies(operation):
+            helpers.add("set_cookie_header")
         for parameter in operation.parameters:
             helpers.add(_SERIALIZERS[parameter.location])
             if parameter.json_content:
@@ -316,6 +318,7 @@ def _render_operation(operation: Operation) -> str:
         _render_headers(operation),
         _render_cookies(operation),
         _render_security(operation),
+        _render_cookie_header(operation),
         _render_body(operation),
     ]
     template = (
@@ -551,6 +554,15 @@ def _render_cookies(operation: Operation) -> str:
     return "".join(lines)
 
 
+def _render_cookie_header(operation: Operation) -> str:
+    if not _needs_cookies(operation):
+        return ""
+    return _wrap(
+        'set_cookie_header(headers, cookies, f"{self._base_url}{path}", self._client)',
+        _INDENT,
+    )
+
+
 def _render_security(operation: Operation) -> str:
     if not operation.security:
         return ""
@@ -766,8 +778,6 @@ def _render_request_arguments(operation: Operation) -> list[str]:
     arguments.append(
         "headers=headers" if _needs_headers(operation) else "headers=self._headers"
     )
-    if _needs_cookies(operation):
-        arguments.append("cookies=cookies")
     bodies = _operation_bodies(operation)
     if bodies:
         body = bodies[0]
@@ -950,6 +960,7 @@ def _needs_headers(operation: Operation) -> bool:
         or _content_type_header(operation)
         or any(_body_needs_content_type(body) for body in _operation_bodies(operation))
         or _security_uses(operation, "header")
+        or _needs_cookies(operation)
     )
 
 

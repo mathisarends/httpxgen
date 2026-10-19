@@ -8,8 +8,10 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from enum import Enum
+from http.cookiejar import CookieJar
 from typing import Any, NamedTuple
 from urllib.parse import quote, quote_plus, urlencode, urlsplit, urlunsplit
+from urllib.request import Request
 
 from pydantic import BaseModel, RootModel, TypeAdapter
 
@@ -36,6 +38,46 @@ def merge_headers(values: Mapping[str, str] | None) -> dict[str, str]:
     for name, value in (values or {}).items():
         set_header(headers, name, value)
     return headers
+
+
+def set_cookie_header(
+    headers: dict[str, str], cookies: Mapping[str, str], url: str, client: object
+) -> None:
+    """Send operation cookies in one Cookie header, keeping the client's cookies.
+
+    An explicit Cookie header replaces the HTTP client's cookie jar for a request,
+    so the jar cookies matching the URL are merged in first.
+    """
+    if not cookies:
+        return
+    existing = next(
+        (value for name, value in headers.items() if name.lower() == "cookie"), None
+    )
+    if existing is None:
+        existing = _client_cookie_header(client, url)
+    pairs: dict[str, str] = {}
+    for item in (existing or "").split(";"):
+        name, separator, value = item.strip().partition("=")
+        if separator:
+            pairs[name] = value
+    pairs.update(cookies)
+    set_header(
+        headers, "Cookie", "; ".join(f"{name}={value}" for name, value in pairs.items())
+    )
+
+
+def _client_cookie_header(client: object, url: str) -> str | None:
+    jar = getattr(getattr(client, "cookies", None), "jar", None)
+    if not isinstance(jar, CookieJar):
+        return None
+    if not urlsplit(url).scheme:
+        base_url = str(getattr(client, "base_url", "") or "")
+        if not base_url:
+            return None
+        url = f"{base_url.rstrip('/')}/{url.lstrip('/')}"
+    request = Request(url)
+    jar.add_cookie_header(request)
+    return request.get_header("Cookie")
 
 
 def serialize_json_part(value: Any, annotation: Any) -> str:

@@ -27,7 +27,6 @@ from httpxgen.openapi import (
 )
 
 NO_DEFAULT = object()
-_EXCLUDE_HINT = "and keep the schemas they reference with --schema-tag"
 
 
 @dataclass(frozen=True)
@@ -131,7 +130,8 @@ def read_operations(spec: OpenAPISpec) -> tuple[Operation, ...]:
             methods = ", ".join(sorted(unsupported))
             raise GenerationError(
                 f"{path} declares {methods} operation(s), which httpxgen does not "
-                f"generate; exclude them with --tag {_EXCLUDE_HINT}"
+                "generate; exclude them with --tag and keep the schemas they "
+                "reference with --schema-tag"
             )
         for method in HttpMethod:
             operation = get_operation(path_item, method)
@@ -790,7 +790,8 @@ def _reject_sequential_media(content: Mapping[str, MediaType], context: str) -> 
         raise GenerationError(
             f"{context} streams {', '.join(streamed)} items through itemSchema; "
             "httpxgen does not generate streaming operations. Exclude the "
-            f"operation with --tag {_EXCLUDE_HINT}"
+            "operation with --tag and keep the schemas it references with "
+            "--schema-tag"
         )
 
 
