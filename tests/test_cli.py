@@ -15,7 +15,7 @@ def test_main_generates_a_package(tmp_path, monkeypatch, capsys):
     result = main()
 
     assert result == 0
-    assert "Generated 8 file(s)" in capsys.readouterr().out
+    assert "Generated 7 file(s)" in capsys.readouterr().out
     assert (output_path / "client.py").exists()
 
 
@@ -36,7 +36,7 @@ def test_main_selects_httpx2_client_type(tmp_path, monkeypatch, capsys):
     )
 
     assert main() == 0
-    assert "Generated 8 file(s)" in capsys.readouterr().out
+    assert "Generated 7 file(s)" in capsys.readouterr().out
     assert (
         "from httpx2 import AsyncClient as AsyncHttpClient"
         in (output_path / "transport.py").read_text()

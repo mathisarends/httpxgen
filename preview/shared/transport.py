@@ -3,17 +3,24 @@
 # ============================================================================
 
 
-from __future__ import annotations
-
 from collections.abc import AsyncIterable, AsyncIterator, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from email.message import Message
 from types import TracebackType
-from typing import Any, BinaryIO, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, BinaryIO, Protocol, runtime_checkable
 
-from preview.shared.exceptions import ClientError, TransportError
+from preview.shared.errors import ClientError, TransportError
+
+if TYPE_CHECKING:
+    from preview.shared.models import HttpResponse
 
 type BinaryContent = bytes | Iterable[bytes] | AsyncIterable[bytes]
+type FilePart = tuple[
+    str | None,
+    bytes | str | BinaryIO,
+    str | None,
+    Mapping[str, str],
+]
 
 
 def binary_content(value: BinaryContent) -> bytes | AsyncIterable[bytes]:
@@ -27,28 +34,8 @@ def binary_content(value: BinaryContent) -> bytes | AsyncIterable[bytes]:
     return chunks()
 
 
-class HttpResponse(Protocol):
-    @property
-    def status_code(self) -> int: ...
-
-    @property
-    def headers(self) -> Mapping[str, str]: ...
-
-    @property
-    def text(self) -> str: ...
-
-    @property
-    def content(self) -> bytes: ...
-
-    def json(self) -> Any: ...
-
-    def aiter_bytes(self, chunk_size: int | None = None) -> AsyncIterator[bytes]: ...
-
-    async def aread(self) -> bytes: ...
-
-
 class AsyncResponseContextManager(Protocol):
-    async def __aenter__(self) -> HttpResponse: ...
+    async def __aenter__(self) -> "HttpResponse": ...
 
     async def __aexit__(
         self, exc_type: type[BaseException] | None,
@@ -67,7 +54,7 @@ class AsyncHttpClient(Protocol):
         files: Sequence[tuple[str, FilePart]] | None = None,
         json: Any = None,
         timeout: float | None = None,
-    ) -> HttpResponse: ...
+    ) -> "HttpResponse": ...
 
     def stream(
         self, method: str, url: str, *,
@@ -93,12 +80,6 @@ class UploadFile:
 
 
 type UploadInput = UploadFile | bytes | BinaryIO
-type FilePart = tuple[
-    str | None,
-    bytes | str | BinaryIO,
-    str | None,
-    Mapping[str, str],
-]
 
 
 def upload_file_part(value: UploadInput, *, content_type: str | None = None) -> FilePart:
@@ -114,7 +95,7 @@ def upload_file_part(value: UploadInput, *, content_type: str | None = None) -> 
 
 
 class BinaryStream:
-    def __init__(self, response: HttpResponse, media_type: str | None) -> None:
+    def __init__(self, response: "HttpResponse", media_type: str | None) -> None:
         self._response = response
         self.media_type = media_type
         self.headers = response.headers

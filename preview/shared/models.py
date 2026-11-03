@@ -3,12 +3,43 @@
 # ============================================================================
 
 
-from __future__ import annotations
-
+from collections.abc import AsyncIterator, Mapping
 from datetime import datetime
-from typing import Any
+from enum import StrEnum
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class HttpMethods(StrEnum):
+    GET = "GET"
+    PUT = "PUT"
+    POST = "POST"
+    DELETE = "DELETE"
+    OPTIONS = "OPTIONS"
+    HEAD = "HEAD"
+    PATCH = "PATCH"
+    TRACE = "TRACE"
+
+
+class HttpResponse(Protocol):
+    @property
+    def status_code(self) -> int: ...
+
+    @property
+    def headers(self) -> Mapping[str, str]: ...
+
+    @property
+    def text(self) -> str: ...
+
+    @property
+    def content(self) -> bytes: ...
+
+    def json(self) -> Any: ...
+
+    def aiter_bytes(self, chunk_size: int | None = None) -> AsyncIterator[bytes]: ...
+
+    async def aread(self) -> bytes: ...
 
 
 class ApiErrorModel(BaseModel):

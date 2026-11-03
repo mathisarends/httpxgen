@@ -3,14 +3,14 @@
 # ============================================================================
 
 
-from .exceptions import (
+from .errors import (
     ApiError,
     ClientError,
     RequestValidationError,
     ResponseValidationError,
     TransportError,
 )
-from .http_methods import HttpMethods
+from .models import HttpMethods, HttpResponse
 from .serialization import (
     UNSET,
     UnsetType,
@@ -33,7 +33,6 @@ from .transport import (
     BinaryContent,
     BinaryStream,
     FilePart,
-    HttpResponse,
     UploadFile,
     UploadInput,
     upload_file_part,

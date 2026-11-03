@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import importlib.util
 import sys
 
@@ -65,8 +66,7 @@ def test_write_client_creates_an_importable_package(tmp_path, generatable_spec):
         "__init__.py",
         "serialization.py",
         "client.py",
-        "exceptions.py",
-        "http_methods.py",
+        "errors.py",
         "transport.py",
         "models.py",
         "py.typed",
@@ -80,9 +80,33 @@ def test_write_client_creates_an_importable_package(tmp_path, generatable_spec):
     try:
         assert callable(client.create_charge)
         assert package.PaymentMethod is not None
+        models = importlib.import_module("payments.models")
+        errors = importlib.import_module("payments.errors")
+        assert package.HttpMethods is models.HttpMethods
+        assert package.HttpResponse is models.HttpResponse
+        assert package.ClientError is errors.ClientError
     finally:
         asyncio.run(http_client.aclose())
         _forget_generated_package(tmp_path, "payments")
+
+
+def test_workspace_exports_shared_support_types(tmp_path, generatable_spec):
+    write_client(
+        spec=generatable_spec,
+        package_dir=tmp_path / "api",
+        tags=["payments", "invoices"],
+    )
+    package = _import_generated_package(tmp_path, "api")
+    try:
+        models = importlib.import_module("api.shared.models")
+        errors = importlib.import_module("api.shared.errors")
+        for module in ("api.shared", "api.payments.client", "api.invoices.client"):
+            assert importlib.import_module(module).HttpMethods is models.HttpMethods
+        assert package.HttpMethods is models.HttpMethods
+        assert package.HttpResponse is models.HttpResponse
+        assert package.ClientError is errors.ClientError
+    finally:
+        _forget_generated_package(tmp_path, "api")
 
 
 def test_check_accepts_current_output(tmp_path, generatable_spec):

@@ -12,8 +12,8 @@ def test_render_package_init_exports_the_client_error_and_models():
     source = render_package_init({"Charge": {"type": "object"}}, "PaymentsClient")
 
     assert "from .client import PaymentsClient" in source
-    assert "from .exceptions import (ApiError, ClientError" in source
-    assert "from .http_methods import HttpMethods" in source
+    assert "from .errors import (ApiError, ClientError" in source
+    assert "from .models import HttpMethods, HttpResponse" in source
     assert "from .models import Charge" in source
     assert '    "PaymentsClient",' in source
     assert '    "Charge",' in source

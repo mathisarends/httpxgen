@@ -31,7 +31,6 @@ from preview.shared import (
     BinaryContent,
     ClientError,
     FilePart,
-    HttpMethods,
     RequestValidationError,
     ResponseValidationError,
     TransportError,
@@ -47,7 +46,7 @@ from preview.shared import (
     set_header,
     upload_file_part,
 )
-from preview.shared.models import ApiErrorModel
+from preview.shared.models import ApiErrorModel, HttpMethods
 
 
 class PaymentsClient:

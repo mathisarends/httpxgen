@@ -52,11 +52,10 @@ A regular specification becomes a self-contained Python package:
 openapi.json  ──▶  httpxgen  ──▶  payments/
                                     ├── __init__.py
                                     ├── client.py         # the public client class
-                                    ├── models.py
-                                    ├── exceptions.py     # generated client errors
-                                    ├── http_methods.py   # HttpMethods
+                                    ├── models.py         # API models, HttpMethods, HttpResponse
+                                    ├── errors.py         # generated client errors
                                     ├── serialization.py  # parameter and auth helpers
-                                    ├── transport.py      # structural protocols and file types
+                                    ├── transport.py      # HTTP client protocol and file types
                                     └── py.typed
 ```
 
@@ -67,9 +66,8 @@ models and support modules are generated once beside them:
 openapi.json  ──▶  httpxgen  ──▶  api/
                                     ├── __init__.py       # clients, ApiError, all models
                                     ├── shared/           # generated once
-                                    │     ├── exceptions.py
-                                    │     ├── http_methods.py
-                                    │     ├── models.py   # only models used by both tags
+                                    │     ├── errors.py
+                                    │     ├── models.py    # shared models, HttpMethods, HttpResponse
                                     │     ├── serialization.py
                                     │     └── transport.py
                                     ├── payments/
@@ -80,6 +78,10 @@ openapi.json  ──▶  httpxgen  ──▶  api/
                                     │     └── models.py
                                     └── py.typed
 ```
+
+`HttpMethods` and `HttpResponse` live in `models.py` (`shared/models.py` in a
+workspace). Generated error classes live in `errors.py`. These types are also
+available from the package root.
 
 ## Install
 
@@ -188,7 +190,7 @@ imports stay short and stable.
 `operationId` becomes an idiomatic snake_case method, optional query parameters are only sent when set, and the response is validated into a model:
 
 `client.py` holds nothing but the imports and the client class — the serialization
-helpers live in `serialization.py`, the error type in `exceptions.py`:
+helpers live in `serialization.py`, the error type in `errors.py`:
 
 ```python
 class ListChargesParams(BaseModel):

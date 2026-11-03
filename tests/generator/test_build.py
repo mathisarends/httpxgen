@@ -15,8 +15,7 @@ def test_generate_client_produces_a_complete_package(generatable_spec):
         "client.py",
         "serialization.py",
         "models.py",
-        "exceptions.py",
-        "http_methods.py",
+        "errors.py",
         "transport.py",
         "__init__.py",
         "py.typed",
@@ -24,9 +23,26 @@ def test_generate_client_produces_a_complete_package(generatable_spec):
     assert files["client.py"].startswith("# ")
     assert "class PaymentsClient" in files["client.py"]
     assert "class PaymentMethodType(StrEnum)" in files["models.py"]
-    assert "class HttpMethods(StrEnum):" in files["http_methods.py"]
+    assert "class HttpMethods(StrEnum):" in files["models.py"]
+    assert "class HttpResponse(Protocol):" in files["models.py"]
     assert "method=HttpMethods.POST" in files["client.py"]
     assert files["py.typed"] == ""
+
+
+@pytest.mark.parametrize("http_client", ["protocol", "httpx", "httpx2"])
+@pytest.mark.parametrize("workspace", [False, True])
+def test_generated_modules_do_not_use_future_annotations(
+    generatable_spec, http_client, workspace
+):
+    files = (
+        generate_workspace(
+            generatable_spec, ["payments", "invoices"], "api", http_client=http_client
+        )
+        if workspace
+        else generate_client(generatable_spec, "api", http_client=http_client)
+    )
+
+    assert all("from __future__" not in source for source in files.values())
 
 
 def test_generate_client_keeps_shared_runtime_out_of_the_client_module(
@@ -158,7 +174,7 @@ def test_generate_client_supports_recursive_and_mapped_discriminator_models(tmp_
     )
     source = (tmp_path / "recursive" / "models.py").read_text()
 
-    assert "children: list[Node] = None" in source
+    assert 'children: "list[Node]" = None' in source
     assert "kind: Literal[PetKind.FELINE]" in source
     sys.path.insert(0, str(tmp_path))
     try:
@@ -291,8 +307,7 @@ def test_generate_workspace_shares_support_modules_between_tag_packages(
         "__init__.py",
         "py.typed",
         "shared/__init__.py",
-        "shared/exceptions.py",
-        "shared/http_methods.py",
+        "shared/errors.py",
         "shared/transport.py",
         "shared/serialization.py",
         "shared/models.py",
@@ -303,9 +318,14 @@ def test_generate_workspace_shares_support_modules_between_tag_packages(
         "invoices/client.py",
         "invoices/models.py",
     }
-    assert "class ApiError(ClientError):" in files["shared/exceptions.py"]
-    assert "class HttpMethods(StrEnum):" in files["shared/http_methods.py"]
-    assert 'POST = "POST"' in files["shared/http_methods.py"]
+    assert "class ApiError(ClientError):" in files["shared/errors.py"]
+    assert "class HttpMethods(StrEnum):" in files["shared/models.py"]
+    assert "class HttpResponse(Protocol):" in files["shared/models.py"]
+    assert "class HttpResponse" not in files["shared/transport.py"]
+    for tag in ("payments", "invoices"):
+        assert "class HttpMethods" not in files[f"{tag}/models.py"]
+        assert "class HttpResponse" not in files[f"{tag}/models.py"]
+    assert 'POST = "POST"' in files["shared/models.py"]
     assert "def apply_security(" in files["shared/serialization.py"]
     assert "class Money(BaseModel):" in files["shared/models.py"]
     assert "class Charge(BaseEntity, AuditInfo):" in files["payments/models.py"]
@@ -319,7 +339,8 @@ def test_generate_workspace_shares_support_modules_between_tag_packages(
     for tag in ("payments", "invoices"):
         client = files[f"{tag}/client.py"]
         assert "    ApiError," in client
-        assert "    HttpMethods," in client
+        assert "HttpMethods" in client
+        assert "from api.shared.models import" in client
         assert "method=HttpMethods." in client
         assert 'method="' not in client
         assert f"from api.{tag}.models import" in client

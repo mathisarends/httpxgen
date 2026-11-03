@@ -16,6 +16,7 @@ from httpxgen.generator.templates import TemplateName, render_template
 _RESERVED_NAMES = {
     "Annotated",
     "Any",
+    "AsyncIterator",
     "ApiError",
     "AsyncHttpClient",
     "ApiResponse",
@@ -30,6 +31,8 @@ _RESERVED_NAMES = {
     "HttpMethods",
     "HttpResponse",
     "Literal",
+    "Mapping",
+    "Protocol",
     "StrEnum",
     "TypeAdapter",
     "BinaryContent",
@@ -159,13 +162,13 @@ def render_package_init(
     imports = [
         f"from .client import {client_name}",
         (
-            "from .exceptions import (ApiError, ClientError, RequestValidationError, "
+            "from .errors import (ApiError, ClientError, RequestValidationError, "
             "ResponseValidationError, TransportError)"
         ),
-        "from .http_methods import HttpMethods",
+        "from .models import HttpMethods, HttpResponse",
         (
             "from .transport import (AsyncHttpClient, BinaryContent, BinaryStream, "
-            "HttpResponse, UploadFile)"
+            "UploadFile)"
         ),
         *_model_import(".models", models),
     ]
