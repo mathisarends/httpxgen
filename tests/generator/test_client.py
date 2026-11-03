@@ -10,10 +10,9 @@ from httpxgen.generator.operations import (
 from httpxgen.openapi import HttpMethod
 
 _LAYOUT = Layout(
-    exceptions="payments.exceptions",
+    errors="payments.errors",
     serialization="payments.serialization",
     models="payments.models",
-    http_methods="payments.http_methods",
 )
 
 
@@ -41,10 +40,9 @@ def test_render_client_imports_shared_support_from_the_workspace_package():
     )
 
     layout = Layout(
-        exceptions="api.shared",
+        errors="api.shared",
         serialization="api.shared",
         models="api.items.models",
-        http_methods="api.shared",
         shared_models="api.shared.models",
         shared_names=frozenset({"Money"}),
     )

@@ -3,8 +3,6 @@
 # ============================================================================
 
 
-from __future__ import annotations
-
 from enum import StrEnum
 from uuid import UUID
 

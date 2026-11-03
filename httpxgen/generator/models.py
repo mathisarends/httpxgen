@@ -63,6 +63,7 @@ def render_models(
     defined: Collection[str] | None = None,
     external: Sequence[tuple[str, Sequence[str]]] = (),
     transport_module: str = "transport",
+    support_types: bool = True,
 ) -> str:
     """Render the models of `defined`, resolving references against `schemas`."""
     defined = set(schemas) if defined is None else set(defined)
@@ -80,11 +81,13 @@ def render_models(
         )
     discriminator_enums_by_field, enums_by_union = _discriminator_enums(schemas)
     recursive = recursive_schema_names(schemas)
+    forward_names = {class_name(name) for name in defined}
 
     def component(name: str) -> str:
         block = _render_component(
-            name, schemas[name], discriminator_enums_by_field, schemas
+            name, schemas[name], discriminator_enums_by_field, schemas, forward_names
         )
+        forward_names.discard(class_name(name))
         if name in recursive and block.startswith(f"{class_name(name)} = "):
             cursor = name
             seen = set()
@@ -137,8 +140,10 @@ def render_models(
         body = f"{_ONE_OF_VALIDATOR}\n\n\n{body}"
     if "ByteValue" in body or "ByteValue" in operation_annotations:
         body = f"{_BYTE_VALUE}\n\n\n{body}"
-    imports = _render_model_imports(body, external, transport_module)
-    return render_template(TemplateName.MODELS, imports=imports, body=body)
+    imports = _render_model_imports(body, external, transport_module, support_types)
+    return render_template(
+        TemplateName.MODELS, imports=imports, body=body, support_types=support_types
+    )
 
 
 def exported_model_names(schemas: Mapping[str, Any]) -> list[str]:
@@ -224,14 +229,19 @@ def _render_model_imports(
     body: str,
     external: Sequence[tuple[str, Sequence[str]]] = (),
     transport_module: str = "transport",
+    support_types: bool = True,
 ) -> str:
     lines: list[str] = []
     if "b64decode(" in body:
         lines.append("from base64 import b64decode, b64encode")
     if "json." in body:
         lines.append("import json")
+    if support_types:
+        lines.append("from collections.abc import AsyncIterator, Mapping")
     datetime_names = used_names(body, ("date", "datetime"))
     typing_names = used_names(body, ("Annotated", "Any", "ClassVar", "Literal", "Self"))
+    if support_types:
+        typing_names = sorted({*typing_names, "Any", "Protocol"})
     pydantic_names = used_names(
         body,
         (
@@ -247,7 +257,7 @@ def _render_model_imports(
     )
     if datetime_names:
         lines.append(f"from datetime import {', '.join(datetime_names)}")
-    if "StrEnum" in body:
+    if support_types or "StrEnum" in body:
         lines.append("from enum import StrEnum")
     if typing_names:
         lines.extend(_render_import("from typing import", typing_names))
@@ -389,6 +399,7 @@ def _render_component(
     schema: Mapping[str, Any],
     discriminator_enums_by_field: Mapping[tuple[str, str], _DiscriminatorEnum],
     schemas: Mapping[str, Any],
+    forward_names: Collection[str],
 ) -> str:
     component_class_name = class_name(name)
     if "const" in schema:
@@ -473,15 +484,16 @@ def _render_component(
             schema=field_schema,
             discriminator_enum=discriminator_enums_by_field.get((name, wire_name)),
             schemas=schemas,
+            forward_names=forward_names,
         )
         for wire_name, field_schema in properties.items()
     ]
     additional = own_schema.get("additionalProperties")
     if isinstance(additional, Mapping):
-        fields.append(
-            "__pydantic_extra__: dict[str, "
-            f"{schema_type(additional, schemas)}] = Field(init=False)"
+        annotation = _forward_annotation(
+            f"dict[str, {schema_type(additional, schemas)}]", forward_names
         )
+        fields.append(f"__pydantic_extra__: {annotation} = Field(init=False)")
     if required_keys := sorted(required - properties.keys()):
         fields.append(
             '@model_validator(mode="after")\n'
@@ -517,12 +529,14 @@ def _render_field(
     schema: Mapping[str, Any],
     discriminator_enum: _DiscriminatorEnum | None = None,
     schemas: Mapping[str, Any] | None = None,
+    forward_names: Collection[str] = (),
 ) -> str:
     annotation = (
         _discriminator_annotation(schema, discriminator_enum)
         if discriminator_enum
         else schema_type(schema, schemas, include_constraints=False)
     )
+    annotation = _forward_annotation(annotation, forward_names)
     field_args: list[str] = []
     if field_name != wire_name:
         field_args.append(f"alias={string_literal(wire_name)}")
@@ -576,6 +590,12 @@ def _render_field(
     if len(rendered) + 4 <= 88:
         return rendered
     return f"{field_name}: {annotation} = Field(\n        {arguments}\n    )"
+
+
+def _forward_annotation(annotation: str, forward_names: Collection[str]) -> str:
+    if used_names(annotation, tuple(forward_names)):
+        return string_literal(annotation)
+    return annotation
 
 
 _ONE_OF_VALIDATOR = """\

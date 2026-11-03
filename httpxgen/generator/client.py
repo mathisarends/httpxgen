@@ -28,10 +28,9 @@ _INDENT = " " * 8
 class Layout:
     """Where a generated client imports its support modules and models from."""
 
-    exceptions: str
+    errors: str
     serialization: str
     models: str
-    http_methods: str = ""
     transport: str = ""
     shared_models: str = ""
     shared_names: frozenset[str] = frozenset()
@@ -163,7 +162,7 @@ def _render_client_imports(
         lines.append(f"from pydantic import {', '.join(names)}")
     lines.append("")
     by_module: dict[str, list[str]] = {}
-    by_module.setdefault(layout.exceptions, []).extend(
+    by_module.setdefault(layout.errors, []).extend(
         [
             "ApiError",
             "ClientError",
@@ -172,7 +171,7 @@ def _render_client_imports(
             "TransportError",
         ]
     )
-    by_module.setdefault(layout.http_methods or layout.serialization, []).append(
+    by_module.setdefault(layout.shared_models or layout.models, []).append(
         "HttpMethods"
     )
     by_module.setdefault(layout.serialization, []).extend(

@@ -10,6 +10,19 @@ def test_render_models_handles_an_api_without_component_schemas():
     source = render_models({})
 
     assert "# This API does not define component schemas." in source
+    namespace = {}
+    exec(source, namespace)
+    assert list(namespace["HttpMethods"]) == [
+        "GET",
+        "PUT",
+        "POST",
+        "DELETE",
+        "OPTIONS",
+        "HEAD",
+        "PATCH",
+        "TRACE",
+    ]
+    assert namespace["HttpResponse"].aread.__annotations__["return"] is bytes
 
 
 def test_render_models_generates_enums_aliases_and_constrained_models():

@@ -91,12 +91,14 @@ def test_generated_protocols_accept_httpx_without_casts(tmp_path, backend, concr
     consumer.write_text(
         "from typing import assert_type\n"
         f"import {backend} as httpx\n"
-        "from typed_api import TypedApiClient, AsyncHttpClient, HttpResponse\n"
+        "from typed_api import TypedApiClient, AsyncHttpClient\n"
+        "from typed_api.models import HttpMethods, HttpResponse\n"
         "from typed_api import (\n"
         "    DownloadResult200, DownloadResult200Stream, DownloadResult204,\n"
         ")\n"
         "transport: AsyncHttpClient = httpx.AsyncClient()\n"
         "response: HttpResponse = httpx.Response(200)\n"
+        "method: str = HttpMethods.GET\n"
         'client = TypedApiClient(httpx.AsyncClient(), "https://example.test")\n'
         "async def check_responses() -> None:\n"
         "    result = await client.download()\n"

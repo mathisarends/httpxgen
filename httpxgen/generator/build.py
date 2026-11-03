@@ -52,10 +52,9 @@ def generate_client(
     client_name = client_name or f"{class_name(package_name.rsplit('.', 1)[-1])}Client"
     validate_package_names(schemas, operations, client_name)
     layout = Layout(
-        exceptions=f"{package_name}.exceptions",
+        errors=f"{package_name}.errors",
         serialization=f"{package_name}.serialization",
         models=f"{package_name}.models",
-        http_methods=f"{package_name}.http_methods",
         transport=f"{package_name}.transport",
     )
     return _finish(
@@ -64,14 +63,14 @@ def generate_client(
             "models.py": render_models(
                 schemas, operations, transport_module=layout.transport
             ),
-            "exceptions.py": render_template(
-                TemplateName.EXCEPTIONS, transport_module=layout.transport
+            "errors.py": render_template(
+                TemplateName.ERRORS, models_module=layout.models
             ),
-            "http_methods.py": render_template(TemplateName.HTTP_METHODS),
             "transport.py": render_template(
                 TemplateName.TRANSPORT,
                 http_client=http_client,
-                exceptions_module=layout.exceptions,
+                errors_module=layout.errors,
+                models_module=layout.models,
             ),
             "serialization.py": render_serialization(read_security_schemes(spec)),
             "__init__.py": render_package_init(schemas, client_name, operations),
@@ -113,14 +112,14 @@ def generate_workspace(
     shared_module = f"{package_name}.{_SHARED}"
 
     files = {
-        f"{_SHARED}/exceptions.py": render_template(
-            TemplateName.EXCEPTIONS, transport_module=f"{shared_module}.transport"
+        f"{_SHARED}/errors.py": render_template(
+            TemplateName.ERRORS, models_module=f"{shared_module}.models"
         ),
-        f"{_SHARED}/http_methods.py": render_template(TemplateName.HTTP_METHODS),
         f"{_SHARED}/transport.py": render_template(
             TemplateName.TRANSPORT,
             http_client=http_client,
-            exceptions_module=f"{package_name}.{_SHARED}.exceptions",
+            errors_module=f"{shared_module}.errors",
+            models_module=f"{shared_module}.models",
         ),
         f"{_SHARED}/serialization.py": render_serialization(
             read_security_schemes(spec)
@@ -137,10 +136,9 @@ def generate_workspace(
         validate_package_names(schemas, operations, client_name)
         defined = {name for name, owner in owners.items() if owner == tag}
         layout = Layout(
-            exceptions=shared_module,
+            errors=shared_module,
             serialization=shared_module,
             models=f"{package_name}.{module}.models",
-            http_methods=shared_module,
             transport=shared_module,
             shared_models=f"{shared_module}.models",
             shared_names=shared_names,
@@ -164,6 +162,7 @@ def generate_workspace(
             defined=defined,
             external=[(f"{shared_module}.models", sorted(shared_names))],
             transport_module=layout.transport,
+            support_types=False,
         )
         files[f"{module}/__init__.py"] = render_client_package_init(client_name, models)
         clients.append((module, client_name))

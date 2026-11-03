@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from {{ transport_module }} import HttpResponse
+    from {{ models_module }} import HttpResponse
 
 
 class ClientError(Exception):
@@ -30,7 +28,7 @@ class ResponseValidationError(ClientError):
     """Raised when an HTTP response does not match the OpenAPI contract."""
 
     def __init__(
-        self, status_code: int, response: HttpResponse, cause: Exception
+        self, status_code: int, response: "HttpResponse", cause: Exception
     ) -> None:
         super().__init__(f"HTTP {status_code} response validation failed: {cause}")
         self.status_code = status_code
@@ -46,7 +44,7 @@ class ApiError(ClientError):
         status_code: int,
         raw_body: str,
         detail: object | None = None,
-        response: HttpResponse | None = None,
+        response: "HttpResponse | None" = None,
     ) -> None:
         super().__init__(f"HTTP {status_code}: {raw_body}")
         self.status_code = status_code

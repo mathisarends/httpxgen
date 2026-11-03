@@ -20,7 +20,6 @@ from preview.shared import (
     ApiError,
     AsyncHttpClient,
     ClientError,
-    HttpMethods,
     RequestValidationError,
     ResponseValidationError,
     TransportError,
@@ -31,7 +30,7 @@ from preview.shared import (
     serialize_query,
     set_header,
 )
-from preview.shared.models import ApiErrorModel
+from preview.shared.models import ApiErrorModel, HttpMethods
 
 
 class InvoicesClient:
