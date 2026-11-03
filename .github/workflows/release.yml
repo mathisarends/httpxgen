@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  pull_request:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || github.head_ref || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and verify distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.14"
+
+      - name: Validate release tag and source
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          expected = f"v{version}"
+          if os.environ["RELEASE_TAG"] != expected:
+              raise SystemExit(f"Release tag must be {expected}")
+          PY
+          git merge-base --is-ancestor HEAD origin/main
+
+      - name: Install locked dependencies
+        run: uv sync --locked --all-groups
+
+      - name: Lint and format
+        run: |
+          uv run ruff check --output-format=github .
+          uv run ruff format --check .
+
+      - name: Run tests
+        run: uv run pytest
+
+      - name: Type-check generated protocols
+        run: uv run --frozen --with mypy==2.4.0 --with httpx2==2.13.1 pytest --no-cov tests/generator/test_typing.py
+
+      - name: Verify checked-in preview
+        run: |
+          bash scripts/generate-preview.sh
+          git diff --exit-code -- preview
+
+      - name: Build wheel and source distribution
+        run: uv build --no-sources
+
+      - name: Check distribution metadata
+        run: uvx --from twine twine check --strict dist/*
+
+      - name: Smoke-test the installed wheel outside the checkout
+        run: |
+          wheel="$(realpath dist/*.whl)"
+          cd "$RUNNER_TEMP"
+          uv run --isolated --no-project --with "$wheel" httpxgen --help
+          uv run --isolated --no-project --with "$wheel" httpxgen \
+            "$GITHUB_WORKSPACE/specs/api.yml" "$RUNNER_TEMP/release_smoke" \
+            --package-name release_smoke --tag payments --tag invoices
+          uv run --isolated --no-project --with "$wheel" httpxgen \
+            "$GITHUB_WORKSPACE/specs/api.yml" "$RUNNER_TEMP/release_smoke" \
+            --package-name release_smoke --tag payments --tag invoices --check
+
+      - name: Store verified distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/httpxgen/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download verified distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist
+
+      - name: Publish with Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  release-assets:
+    name: Attach published distributions to GitHub Release
+    if: github.event_name == 'release'
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download published distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist
+
+      - name: Calculate checksums
+        working-directory: dist
+        run: sha256sum -- *.whl *.tar.gz > SHA256SUMS
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
