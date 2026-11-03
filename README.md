@@ -26,6 +26,7 @@ the client, check it into your repository, review it, debug it, and ship it.
 - [Automation and CI](#automation-and-ci)
 - [Supported scope](#supported-scope)
 - [Development](#development)
+- [Releasing](#releasing)
 - [License](#license)
 
 ## Why httpxgen?
@@ -690,6 +691,33 @@ stale:
 ```sh
 ./scripts/generate-preview.sh
 ```
+
+## Releasing
+
+Publishing a GitHub Release runs `.github/workflows/release.yml`, which builds
+and verifies the wheel and source distribution, publishes them to PyPI through
+Trusted Publishing, and attaches the same files plus `SHA256SUMS` to the release.
+Pull requests run the build and verification steps as a publishing dry run.
+
+1. Update `project.version` in `pyproject.toml`, run `uv lock` to synchronize
+   `uv.lock`, and finalize the version's changelog and migration notes.
+2. Merge the release preparation PR into `main` and wait for green CI.
+3. Create a GitHub Release with tag `v<project.version>` targeting that merged
+   commit. A draft does not publish anything; choose **Publish release** to
+   start the workflow.
+4. Wait for the **Release** workflow to finish and verify the new version on
+   [PyPI](https://pypi.org/project/httpxgen/).
+
+The workflow rejects tags that do not match `project.version` or point to a
+commit outside `main`. The PyPI Trusted Publisher must name repository
+`mathisarends/httpxgen`, workflow `release.yml`, and environment `pypi`.
+The publishing job uses that GitHub environment and `id-token: write`; no PyPI
+API token is required. Any configured environment approval must be completed
+before the publishing job can run.
+
+The tagged commit must contain the release workflow. For the first automated
+release, merge this workflow before creating the tag. If reusing an existing
+draft, update its target commit and release notes before publishing it.
 
 ## License
 
